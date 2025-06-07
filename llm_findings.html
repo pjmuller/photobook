@@ -1,0 +1,15 @@
+- gemini 2.5pro-exp-05-06 (>= v1.6 I did it with exp-06-05)
+  - very good initial response
+  - next 4 iterations did not get the resizing logic right anymore (strange that the first run, by accident did get it right)
+  - possibly due to the prompt getting more detailled (on others parts) and sticking too literal to using interactjs (which was a wrong move) 
+  - generating via cursor gave far inferior results than via gemini web ui
+    - ? too high temperature ?
+    - mixing of their own system prompts ?
+    - fewer thinking tokens ?
+- openai 04-mini-high
+  - plenty of bugs on first shot, though did load and some things were implemented right (like adding and removing pages)
+- deepseek r1
+  - very slow reasining output speed (might have faster inference providers than their own site?)
+  - stopped very early, after 260 lines of code, while this project is about 1500 lines (or 20k tokens)
+- claude sonnet 4 thinking
+  - could not load the file, seems to have many bugs in it, did not spend time on it

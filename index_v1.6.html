@@ -1,0 +1,1602 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Album Photobook Creator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css" rel="stylesheet">
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: sans-serif;
+            overflow: hidden; /* Prevent body scrollbars */
+        }
+        .app-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        .main-area-wrapper {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #f0f0f0;
+            padding: 20px;
+            overflow: hidden; /* Important for scaling */
+            position: relative;
+        }
+        .album-preview {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transform-origin: center center; /* For scaling */
+        }
+        .page-container {
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            position: relative; /* For layout change icon */
+        }
+        .page-content {
+            position: relative; /* For absolute positioning of rows/gutters */
+        }
+        .page-row {
+            display: flex;
+            position: absolute;
+        }
+        .page-column {
+            position: absolute;
+            overflow: hidden; /* Crucial for image cropping */
+            background-color: #e9e9e9; /* Placeholder bg */
+        }
+        .cell-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px dashed #aaa;
+            color: #777;
+            font-size: 0.8em; /* Scaled with page */
+            text-align: center;
+        }
+        .page-column img {
+            display: block;
+            position: absolute; /* For transform */
+            top: 0;
+            left: 0;
+            transform-origin: 0 0;
+        }
+        .row-gutter, .col-gutter {
+            background-color: #ccc; /* Visible for debugging, should be transparent */
+            position: absolute;
+            z-index: 10;
+        }
+        .row-gutter-handle, .col-gutter-handle {
+            position: absolute;
+            z-index: 11; /* Above visual gutter */
+            /* background-color: rgba(255,0,0,0.1); For debugging */
+        }
+        .row-gutter-handle { cursor: row-resize; }
+        .col-gutter-handle { cursor: col-resize; }
+
+        .image-bank {
+            height: 170px;
+            background-color: #333;
+            padding: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+        .image-bank-thumb {
+            height: 150px;
+            width: auto;
+            margin-right: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease-out;
+            cursor: grab;
+        }
+        .image-bank-thumb:hover {
+            transform: scale(1.1);
+        }
+        .image-bank-thumb.used {
+            filter: grayscale(80%) opacity(0.6);
+            cursor: pointer;
+        }
+        .top-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+        .page-numbers {
+            position: absolute;
+            bottom: 5px; /* Relative to main-area-wrapper */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.5);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            z-index: 50;
+        }
+        .loading-spinner, .error-message, .select-folder-prompt {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255,255,255,0.9);
+            z-index: 1000;
+        }
+        .layout-change-icon {
+            position: absolute;
+            top: 5px; /* Relative to page scaled margin */
+            background-color: rgba(255,255,255,0.7);
+            border-radius: 50%;
+            padding: 5px;
+            cursor: pointer;
+            z-index: 20;
+        }
+        .layout-change-icon.left-page { left: 5px; }
+        .layout-change-icon.right-page { right: 5px; }
+        .layout-menu {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            padding: 5px;
+            z-index: 25;
+            white-space: pre; /* For layout symbols */
+            font-family: monospace;
+            font-size: 1.2em; /* Make symbols larger */
+        }
+        .layout-menu-item {
+            padding: 8px;
+            cursor: pointer;
+        }
+        .layout-menu-item:hover {
+            background-color: #f0f0f0;
+        }
+        /* Croppie Modal */
+        #cropModal .modal-dialog { max-width: 90vw; }
+        #croppie-container { width: 100%; height: 70vh; }
+
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="alpineData()" x-init="init()" x-cloak>
+
+    <div class="app-container">
+        <!-- Main Area -->
+        <div class="main-area-wrapper" id="album-preview-wrapper" 
+             @dragover.prevent @drop.prevent="handleDropOnOutside($event)">
+            
+            <!-- Initial Folder Select -->
+            <div x-show="showFolderPicker" class="select-folder-prompt">
+                <button class="btn btn-primary btn-lg" @click="selectFolder()">
+                    <i class="bi bi-folder2-open"></i> Select Image Folder
+                </button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div x-show="isLoading && !showFolderPicker" class="loading-spinner">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <p class="mt-2">Loading album and images...</p>
+            </div>
+
+            <!-- Error Message -->
+            <div x-show="error" class="error-message">
+                <div class="alert alert-danger" role="alert">
+                    <h4 class="alert-heading">Error</h4>
+                    <p x-text="error"></p>
+                    <hr>
+                    <p class="mb-0">Please resolve the issue and try again, or select a different folder.</p>
+                    <button class="btn btn-warning mt-2" @click="resetAndSelectFolder()">Select Different Folder</button>
+                </div>
+            </div>
+            
+            <!-- Album Preview -->
+            <div x-show="!showFolderPicker && !isLoading && !error && album.pages.length > 0" 
+                 class="album-preview" 
+                 :style="{ transform: `scale(${albumScale})`, gap: cmToPx(GUTTER_CM) + 'px' }">
+                
+                <template x-for="(pageInfo, index) in displayedPagesInfo" :key="pageInfo.page.id + '-' + pageInfo.side">
+                    <div class="page-container"
+                         :style="{ 
+                             width: pageOuterWidthPx + 'px', 
+                             height: pageOuterHeightPx + 'px',
+                             margin: pageInfo.isSingle && pageInfo.side === 'left' ? `0 ${pageOuterWidthPx + cmToPx(GUTTER_CM)}px 0 0` : 
+                                     pageInfo.isSingle && pageInfo.side === 'right' ? `0 0 0 ${pageOuterWidthPx + cmToPx(GUTTER_CM)}px` : '0'
+                         }">
+                        <div class="page-content" 
+                             :style="{ 
+                                 position: 'absolute',
+                                 top: marginPx + 'px', left: marginPx + 'px',
+                                 width: pageContentAreaWidthPx + 'px', 
+                                 height: pageContentAreaHeightPx + 'px' 
+                             }">
+
+                            <!-- Layout Change Icon -->
+                            <template x-if="!pageInfo.isFixedLayout">
+                                <div>
+                                    <i class="bi bi-grid-fill layout-change-icon"
+                                       :class="{ 'left-page': pageInfo.side === 'left', 'right-page': pageInfo.side === 'right' }"
+                                       @click="toggleLayoutMenu(pageInfo.page.id, $event)"></i>
+                                    
+                                    <div x-show="showLayoutMenuForPageId === pageInfo.page.id" 
+                                         class="layout-menu"
+                                         :style="getLayoutMenuPosition(pageInfo.page.id)"
+                                         @click.outside="closeLayoutMenu()">
+                                        <template x-for="layoutKey in Object.keys(LAYOUTS)" :key="layoutKey">
+                                            <div class="layout-menu-item" 
+                                                 @click="changeLayout(pageInfo.page.id, layoutKey)"
+                                                 x-html="LAYOUTS[layoutKey].symbol.replace(/\n/g, '<br>')">
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- Rows -->
+                            <template x-for="(row, rowIndex) in pageInfo.page.rows" :key="pageInfo.page.id + '-r' + rowIndex">
+                                <div class="page-row" :style="calculateRowStyle(pageInfo.page, rowIndex)">
+                                    <!-- Columns -->
+                                    <template x-for="(col, colIndex) in row.columns" :key="pageInfo.page.id + '-r' + rowIndex + '-c' + colIndex">
+                                        <div class="page-column" 
+                                             :style="calculateColumnStyle(pageInfo.page, rowIndex, colIndex)"
+                                             @dblclick="col.path ? openCropModal(pageInfo.page.id, rowIndex, colIndex) : null"
+                                             @dragover.prevent @drop.prevent="handleDropOnCell($event, pageInfo.page.id, rowIndex, colIndex)"
+                                             @dragstart="col.path ? handleCellDragStart($event, pageInfo.page.id, rowIndex, colIndex, col.path) : null"
+                                             :draggable="!!col.path">
+                                            
+                                            <template x-if="col.path">
+                                                <img :src="getImageUrl(col.path)" 
+                                                     :style="calculateImageTagStyle(pageInfo.page.id, rowIndex, colIndex, col.path)"
+                                                     @load="setOriginalImageDimensions($event.target, col.path)">
+                                            </template>
+                                            <template x-if="!col.path">
+                                                <div class="cell-placeholder">Drop image here</div>
+                                            </template>
+                                        </div>
+                                    </template>
+                                    <!-- Column Gutters -->
+                                    <template x-for="(col, colIndex) in row.columns">
+                                        <template x-if="colIndex < row.columns.length - 1">
+                                            <div :style="calculateColumnGutterStyle(pageInfo.page, rowIndex, colIndex)">
+                                                <div class="col-gutter" :style="{width: '100%', height: '100%'}"></div>
+                                                <div class="col-gutter-handle" 
+                                                     :style="{width: '100%', height: '100%'}"
+                                                     @mousedown.prevent="initGutterResize($event, 'col', pageInfo.page.id, rowIndex, colIndex)">
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </template>
+                                </div>
+                            </template>
+                            <!-- Row Gutters -->
+                            <template x-for="(row, rowIndex) in pageInfo.page.rows">
+                                <template x-if="rowIndex < pageInfo.page.rows.length - 1">
+                                    <div :style="calculateRowGutterStyle(pageInfo.page, rowIndex)">
+                                        <div class="row-gutter" :style="{width: '100%', height: '100%'}"></div>
+                                        <div class="row-gutter-handle" 
+                                             :style="{width: '100%', height: '100%'}"
+                                             @mousedown.prevent="initGutterResize($event, 'row', pageInfo.page.id, rowIndex)">
+                                        </div>
+                                    </div>
+                                </template>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <!-- Page Numbers -->
+            <div x-show="!showFolderPicker && !isLoading && !error && album.pages.length > 0" class="page-numbers" x-text="pageNumbersText"></div>
+
+            <!-- Top Right Controls -->
+            <div x-show="!showFolderPicker && !isLoading && !error && album.pages.length > 0" class="top-controls">
+                <div class="btn-group me-2" role="group" aria-label="Navigation">
+                    <button type="button" class="btn btn-secondary" @click="previousView()" :disabled="currentView === 0" title="Previous Page/Spread">
+                        <i class="bi bi-arrow-left"></i>
+                    </button>
+                    <button type="button" class="btn btn-secondary" @click="nextView()" :disabled="currentView === numViews - 1" title="Next Page/Spread">
+                        <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+                <div class="btn-group" role="group" aria-label="Page Actions">
+                    <button type="button" class="btn btn-success" @click="addSpread()" :disabled="isViewingLastPageSingle" title="Add New Spread">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                    <button type="button" class="btn btn-danger" @click="deleteSpread()" :disabled="isCurrentViewSinglePage" title="Delete Current Spread">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button id="btnGroupDrop1" type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false" :disabled="isCurrentViewSinglePage" title="Move Spread">
+                            <i class="bi bi-arrow-left-right"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
+                            <li><a class="dropdown-item" href="#" @click.prevent="moveSpread('left')" :class="{ 'disabled': currentView === 1 || isCurrentViewSinglePage }"><i class="bi bi-arrow-bar-left"></i> Move Left</a></li>
+                            <li><a class="dropdown-item" href="#" @click.prevent="moveSpread('right')" :class="{ 'disabled': currentView === numViews - 2 || isCurrentViewSinglePage }"><i class="bi bi-arrow-bar-right"></i> Move Right</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Image Bank -->
+        <div x-show="!showFolderPicker && !isLoading && !error" class="image-bank" 
+             @dragover.prevent @drop.prevent="handleDropOnBank($event)">
+            <template x-for="image in availableImages" :key="image.path">
+                <img :src="image.url" 
+                     class="image-bank-thumb"
+                     :class="{ 'used': image.isUsed }"
+                     :alt="image.name"
+                     :draggable="!image.isUsed"
+                     @dragstart="image.isUsed ? $event.preventDefault() : handleImageBankDragStart($event, image)"
+                     @click="image.isUsed ? goToImagePage(image.path) : null"
+                     :title="image.isUsed ? 'Image used. Click to go to page.' : image.name">
+            </template>
+        </div>
+    </div>
+
+    <!-- Crop Modal -->
+    <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="cropModalLabel">Crop Image</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" @click="cancelCrop"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="croppie-container"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" @click="cancelCrop">Cancel</button>
+                    <button type="button" class="btn btn-primary" @click="applyCrop">Apply Crop</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+
+    <script>
+    const LAYOUTS = {
+      "1": {
+        name: "Single Image", symbol: '██',
+        rows: [{ height_percent: 100, columns: [{ width_grid: 12 }] }]
+      },
+      "2-2": {
+        name: "2x2 Grid", symbol: '██▌██▌\n██▌██▌',
+        rows: [
+          { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] },
+          { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+        ]
+      },
+      "2-3": {
+        name: "2 Top, 3 Bottom", symbol: '██▌██▌\n█▌█▌█▌',
+        rows: [
+          { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 8 }] },
+          { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] }
+        ]
+      },
+      "3-2": {
+        name: "3 Top, 2 Bottom", symbol: '█▌█▌█▌\n██▌██▌',
+        rows: [
+          { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] },
+          { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+        ]
+      }
+    };
+
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('alpineData', () => ({
+            // Constants
+            PHOTOBOOK_VERSION: '0.1',
+            PAGE_WIDTH_CM: 35,
+            PAGE_HEIGHT_CM: 29,
+            MARGIN_CM: 1,
+            GUTTER_CM: 0.5,
+            DPI: 96,
+            IMAGE_BANK_THUMB_HEIGHT_PX: 150,
+            MIN_CELL_PERCENT: 10, // Min height/width for resize
+            MIN_CELL_GRID_UNITS: 1, // Min grid units for resize
+
+            // State
+            directoryHandle: null,
+            album: { photobook_version: '0.1', pages: [] },
+            availableImages: [], // { path, name, exifDate, originalWidth, originalHeight, url, isUsed }
+            originalImageDimensionsCache: {}, // path: {width, height}
+            currentView: 0,
+            albumScale: 1,
+            isLoading: false,
+            error: null,
+            showFolderPicker: true,
+            
+            croppieInstance: null,
+            cropModalElement: null,
+            bsCropModal: null,
+            croppingCellInfo: null, // { pageId, rowIndex, colIndex, imagePath, cellWidthPx, cellHeightPx }
+            
+            draggedImageInfo: null, // { type: 'bank'/'cell', path?, pageId?, rowIndex?, colIndex? }
+            
+            resizingGutterInfo: null, // { type: 'row'/'col', pageId, index (rowIndex or colIndex for first element), initialMouse, initialSizes, pageContentDim }
+            
+            showLayoutMenuForPageId: null,
+            layoutMenuTargetButton: null,
+
+            // Getters / Computed
+            get cmToPxFactor() { return this.DPI / 2.54; },
+            cmToPx(cm) { return cm * this.cmToPxFactor; },
+
+            get pageOuterWidthPx() { return this.cmToPx(this.PAGE_WIDTH_CM); },
+            get pageOuterHeightPx() { return this.cmToPx(this.PAGE_HEIGHT_CM); },
+            get marginPx() { return this.cmToPx(this.MARGIN_CM); },
+            get gutterPx() { return this.cmToPx(this.GUTTER_CM); },
+
+            get pageContentAreaWidthPx() { return this.pageOuterWidthPx - 2 * this.marginPx; },
+            get pageContentAreaHeightPx() { return this.pageOuterHeightPx - 2 * this.marginPx; },
+
+            get numAlbumPages() { return this.album.pages.length; },
+            get numViews() {
+                if (this.numAlbumPages < 1) return 0;
+                if (this.numAlbumPages === 1) return 1; // Only first page
+                // First page (1) + Spreads ((N-2)/2) + Last page (1)
+                return 1 + (this.numAlbumPages - 2) / 2 + 1;
+            },
+
+            displayedPagesInfo() {
+                if (this.numAlbumPages === 0) return [];
+                const pages = [];
+                const firstPage = this.album.pages[0];
+                const lastPageIdx = this.numAlbumPages - 1;
+                const lastPage = this.album.pages[lastPageIdx];
+
+                if (this.currentView === 0) { // First page
+                    pages.push({ 
+                        page: firstPage, 
+                        side: 'right', 
+                        isSingle: true, 
+                        isFixedLayout: true, 
+                        pageNumberForDisplay: 1 
+                    });
+                } else if (this.currentView === this.numViews - 1) { // Last page
+                    pages.push({ 
+                        page: lastPage, 
+                        side: 'left', 
+                        isSingle: true, 
+                        isFixedLayout: true, 
+                        pageNumberForDisplay: this.numAlbumPages 
+                    });
+                } else { // Spread
+                    const leftPageIndexInAlbum = 1 + (this.currentView - 1) * 2;
+                    const rightPageIndexInAlbum = leftPageIndexInAlbum + 1;
+                    pages.push({ 
+                        page: this.album.pages[leftPageIndexInAlbum], 
+                        side: 'left', 
+                        isSingle: false, 
+                        isFixedLayout: false, 
+                        pageNumberForDisplay: leftPageIndexInAlbum + 1 
+                    });
+                    pages.push({ 
+                        page: this.album.pages[rightPageIndexInAlbum], 
+                        side: 'right', 
+                        isSingle: false, 
+                        isFixedLayout: false, 
+                        pageNumberForDisplay: rightPageIndexInAlbum + 1 
+                    });
+                }
+                return pages;
+            },
+
+            get pageNumbersText() {
+                if (!this.displayedPagesInfo || this.displayedPagesInfo.length === 0) return "";
+                const firstDisp = this.displayedPagesInfo[0];
+                if (this.displayedPagesInfo.length === 1) {
+                    return `Page ${firstDisp.pageNumberForDisplay} / ${this.numAlbumPages}`;
+                } else {
+                    const secondDisp = this.displayedPagesInfo[1];
+                    return `Pages ${firstDisp.pageNumberForDisplay}-${secondDisp.pageNumberForDisplay} / ${this.numAlbumPages}`;
+                }
+            },
+
+            get isCurrentViewSinglePage() {
+                return this.currentView === 0 || this.currentView === this.numViews - 1;
+            },
+            get isViewingLastPageSingle() { // for disabling add spread
+                return this.currentView === this.numViews -1 && this.numAlbumPages > 0;
+            },
+            
+            // Methods
+            init() {
+                this.LAYOUTS = LAYOUTS; // Make accessible in template
+                this.cropModalElement = document.getElementById('cropModal');
+                this.bsCropModal = new bootstrap.Modal(this.cropModalElement);
+
+                window.addEventListener('resize', () => this.resizeAlbumPreview());
+                this.$watch('album.pages.length', () => {
+                    this.updateUsedImageStatus();
+                    this.resizeAlbumPreview();
+                });
+                this.$watch('currentView', () => this.resizeAlbumPreview());
+
+                // Initialize tooltips
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    return new bootstrap.Tooltip(tooltipTriggerEl);
+                });
+                // For dynamically added tooltips, you might need a more robust solution or re-init
+                // For now, this covers static ones.
+            },
+
+            resetAndSelectFolder() {
+                this.error = null;
+                this.showFolderPicker = true;
+                this.album = { photobook_version: this.PHOTOBOOK_VERSION, pages: [] };
+                this.availableImages = [];
+                this.currentView = 0;
+            },
+
+            async selectFolder() {
+                try {
+                    this.directoryHandle = await window.showDirectoryPicker();
+                    this.showFolderPicker = false;
+                    this.isLoading = true;
+                    this.error = null;
+                    
+                    await this.loadImagesFromDirectory();
+                    if (this.availableImages.length === 0) {
+                        this.error = "No JPG files found in the selected folder. Please select another folder.";
+                        this.isLoading = false;
+                        // this.showFolderPicker = true; // Keep false to show error message
+                        return;
+                    }
+                    await this.loadAlbumOrCreateNew();
+                    this.updateUsedImageStatus();
+
+                } catch (err) {
+                    console.error("Error selecting folder or loading initial data:", err);
+                    if (err.name !== 'AbortError') { // User didn't cancel
+                        this.error = `Failed to access folder: ${err.message}`;
+                    }
+                   // this.showFolderPicker = true; // Allow re-selection
+                } finally {
+                    this.isLoading = false;
+                    this.resizeAlbumPreview();
+                }
+            },
+
+            async loadImagesFromDirectory() {
+                this.availableImages = [];
+                this.originalImageDimensionsCache = {};
+                const imagePromises = [];
+                for await (const entry of this.directoryHandle.values()) {
+                    if (entry.kind === 'file' && (entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.jpeg'))) {
+                        imagePromises.push(this.processImageFile(entry));
+                    }
+                }
+                const imageData = await Promise.all(imagePromises);
+                this.availableImages = imageData.filter(img => img !== null);
+                this.sortAvailableImages();
+            },
+
+            async processImageFile(fileEntry) {
+                try {
+                    const file = await fileEntry.getFile();
+                    const url = URL.createObjectURL(file);
+                    const exifDate = await this.getExifDate(file);
+                    // Original dimensions will be fetched on demand or when img loads
+                    return { name: file.name, path: file.name, url, exifDate, originalWidth: null, originalHeight: null, isUsed: false };
+                } catch (e) {
+                    console.warn(`Could not process file ${fileEntry.name}: ${e.message}`);
+                    return null;
+                }
+            },
+
+            async getExifDate(file) {
+                return new Promise((resolve) => {
+                    EXIF.getData(file, function() {
+                        const dateTime = EXIF.getTag(this, "DateTimeOriginal") || EXIF.getTag(this, "DateTime");
+                        if (dateTime) {
+                            // Format: "YYYY:MM:DD HH:MM:SS" -> parseable by Date
+                            const parts = dateTime.split(" ");
+                            const dateParts = parts[0].split(":");
+                            const timeParts = parts[1] ? parts[1].split(":") : ["00","00","00"];
+                            resolve(new Date(dateParts[0], dateParts[1]-1, dateParts[2], timeParts[0], timeParts[1], timeParts[2]).toISOString());
+                        } else {
+                            resolve(null);
+                        }
+                    });
+                });
+            },
+            
+            setOriginalImageDimensions(imgElement, imagePath) {
+                // This is called by @load on the image tag in a cell
+                const image = this.availableImages.find(im => im.path === imagePath);
+                if (image && (!image.originalWidth || !image.originalHeight)) {
+                    image.originalWidth = imgElement.naturalWidth;
+                    image.originalHeight = imgElement.naturalHeight;
+                }
+                // Also cache it globally
+                if (!this.originalImageDimensionsCache[imagePath]) {
+                     this.originalImageDimensionsCache[imagePath] = {
+                        width: imgElement.naturalWidth,
+                        height: imgElement.naturalHeight
+                    };
+                }
+            },
+
+            async getOriginalImageDimensions(imagePath) {
+                if (this.originalImageDimensionsCache[imagePath]) {
+                    return this.originalImageDimensionsCache[imagePath];
+                }
+                const image = this.availableImages.find(im => im.path === imagePath);
+                if (image && image.originalWidth && image.originalHeight) {
+                     this.originalImageDimensionsCache[imagePath] = { width: image.originalWidth, height: image.originalHeight };
+                     return this.originalImageDimensionsCache[imagePath];
+                }
+                // Fallback: load image if not in cell yet (e.g. for auto-crop before display)
+                return new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        if (image) { // Update availableImages entry if exists
+                           image.originalWidth = img.width;
+                           image.originalHeight = img.height;
+                        }
+                        this.originalImageDimensionsCache[imagePath] = { width: img.width, height: img.height };
+                        resolve({ width: img.width, height: img.height });
+                    };
+                    img.onerror = () => {
+                        console.error(`Failed to load image ${imagePath} to get dimensions.`);
+                        reject(new Error(`Failed to load image ${imagePath}`));
+                    };
+                    img.src = this.getImageUrl(imagePath);
+                });
+            },
+
+
+            sortAvailableImages() {
+                this.availableImages.sort((a, b) => {
+                    if (a.exifDate && b.exifDate) {
+                        return new Date(a.exifDate) - new Date(b.exifDate);
+                    } else if (a.exifDate) {
+                        return -1; // a comes first
+                    } else if (b.exifDate) {
+                        return 1;  // b comes first
+                    } else {
+                        return a.name.localeCompare(b.name); // Sort by filename if no EXIF
+                    }
+                });
+            },
+
+            updateUsedImageStatus() {
+                const usedPaths = new Set();
+                this.album.pages.forEach(page => {
+                    page.rows.forEach(row => {
+                        row.columns.forEach(col => {
+                            if (col.path) usedPaths.add(col.path);
+                        });
+                    });
+                });
+                this.availableImages.forEach(img => {
+                    img.isUsed = usedPaths.has(img.path);
+                });
+            },
+
+            async loadAlbum() {
+                try {
+                    const fileHandle = await this.directoryHandle.getFileHandle('album.json');
+                    const file = await fileHandle.getFile();
+                    const contents = await file.text();
+                    const loadedAlbum = JSON.parse(contents);
+
+                    if (loadedAlbum.photobook_version !== this.PHOTOBOOK_VERSION) {
+                        this.error = `Incompatible album.json version. Expected ${this.PHOTOBOOK_VERSION}, found ${loadedAlbum.photobook_version}. Please remove or update album.json.`;
+                        // this.showFolderPicker = true; // Allow re-selection
+                        return false; // Indicate failure
+                    }
+                    this.album = loadedAlbum;
+                    // Ensure all pages have IDs
+                    this.album.pages.forEach(p => { if (!p.id) p.id = this.generateUUID(); });
+                    return true; // Indicate success
+                } catch (e) {
+                    if (e.name === 'NotFoundError') {
+                        console.log('album.json not found, will create new.');
+                        return 'create_new'; // Specific signal to create new
+                    }
+                    console.error("Error loading album.json:", e);
+                    this.error = `Error loading album.json: ${e.message}`;
+                    // this.showFolderPicker = true;
+                    return false; // Indicate failure
+                }
+            },
+
+            async loadAlbumOrCreateNew() {
+                const loadResult = await this.loadAlbum();
+                if (loadResult === 'create_new') {
+                    this.createDefaultAlbum();
+                    await this.saveAlbum();
+                } else if (!loadResult) { // Load failed with an error
+                    // Error is already set by loadAlbum()
+                    return;
+                }
+                // If loadResult was true, album is loaded.
+                // Validate basic structure
+                if (!this.album.pages || this.album.pages.length === 0 || this.album.pages.length % 2 !== 0 && this.album.pages.length > 1) {
+                    console.warn("Loaded album has invalid page structure. Resetting to default.");
+                    this.createDefaultAlbum();
+                    await this.saveAlbum();
+                } else {
+                    // Ensure first and last pages have layout "1"
+                    if (this.album.pages.length > 0) {
+                        if (this.album.pages[0].layout !== "1") {
+                            console.warn("First page layout incorrect. Resetting to '1'.");
+                            this.album.pages[0] = this.createPage("1");
+                        }
+                        if (this.album.pages.length > 1) {
+                            const lastIdx = this.album.pages.length - 1;
+                            if (this.album.pages[lastIdx].layout !== "1") {
+                                console.warn("Last page layout incorrect. Resetting to '1'.");
+                                this.album.pages[lastIdx] = this.createPage("1");
+                            }
+                        }
+                    }
+                }
+                this.currentView = 0; // Start at the beginning
+            },
+
+            async saveAlbum() {
+                if (!this.directoryHandle) return;
+                try {
+                    const fileHandle = await this.directoryHandle.getFileHandle('album.json', { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(JSON.stringify(this.album, null, 2));
+                    await writable.close();
+                    console.log("Album saved.");
+                } catch (e) {
+                    console.error("Error saving album:", e);
+                    this.error = `Failed to save album: ${e.message}`;
+                }
+            },
+            
+            createPage(layoutKey) {
+                const layout = LAYOUTS[layoutKey];
+                if (!layout) throw new Error(`Unknown layout key: ${layoutKey}`);
+                return {
+                    id: this.generateUUID(),
+                    layout: layoutKey,
+                    rows: JSON.parse(JSON.stringify(layout.rows)) // Deep copy
+                };
+            },
+
+            createDefaultAlbum() {
+                this.album.pages = [
+                    this.createPage("1"),    // First page (right)
+                    this.createPage("2-3"),  // Spread left
+                    this.createPage("3-2"),  // Spread right
+                    this.createPage("1")     // Last page (left)
+                ];
+                this.album.photobook_version = this.PHOTOBOOK_VERSION;
+            },
+
+            generateUUID() {
+              return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+              });
+            },
+
+            // Page & Layout Calculations
+            getPageById(pageId) {
+                return this.album.pages.find(p => p.id === pageId);
+            },
+            
+            _getCell(pageId, rowIndex, colIndex) {
+                const page = this.getPageById(pageId);
+                if (!page || !page.rows[rowIndex] || !page.rows[rowIndex].columns[colIndex]) {
+                    console.error(`Cell not found for ${pageId}, ${rowIndex}, ${colIndex}`);
+                    return null;
+                }
+                return page.rows[rowIndex].columns[colIndex];
+            },
+
+            calculateRowStyle(page, rowIndex) {
+                const row = page.rows[rowIndex];
+                const numRowGutters = page.rows.length - 1;
+                const totalRowGutterHeightPx = numRowGutters > 0 ? numRowGutters * this.gutterPx : 0;
+                const netHeightForRowsPx = this.pageContentAreaHeightPx - totalRowGutterHeightPx;
+                
+                const height = (row.height_percent / 100) * netHeightForRowsPx;
+                
+                let top = 0;
+                for (let i = 0; i < rowIndex; i++) {
+                    top += (page.rows[i].height_percent / 100) * netHeightForRowsPx + this.gutterPx;
+                }
+                
+                return {
+                    width: this.pageContentAreaWidthPx + 'px',
+                    height: height + 'px',
+                    top: top + 'px',
+                    left: '0px'
+                };
+            },
+
+            calculateColumnStyle(page, rowIndex, colIndex) {
+                const row = page.rows[rowIndex];
+                const col = row.columns[colIndex];
+                const numColGutters = row.columns.length - 1;
+                const totalColGutterWidthPx = numColGutters > 0 ? numColGutters * this.gutterPx : 0;
+                const netWidthForColsPx = this.pageContentAreaWidthPx - totalColGutterWidthPx;
+
+                const width = (col.width_grid / 12) * netWidthForColsPx;
+                
+                let left = 0;
+                for (let i = 0; i < colIndex; i++) {
+                    left += (row.columns[i].width_grid / 12) * netWidthForColsPx + this.gutterPx;
+                }
+
+                // Get row height for this column's cell height
+                const rowStyle = this.calculateRowStyle(page, rowIndex);
+                const height = parseFloat(rowStyle.height);
+
+                return {
+                    width: width + 'px',
+                    height: height + 'px', // Use calculated row height
+                    top: '0px', // Relative to row
+                    left: left + 'px' // Relative to row
+                };
+            },
+            
+            calculateRowGutterStyle(page, rowIndex) {
+                // This gutter is AFTER the specified row
+                const rowStyle = this.calculateRowStyle(page, rowIndex);
+                const top = parseFloat(rowStyle.top) + parseFloat(rowStyle.height);
+                return {
+                    position: 'absolute',
+                    top: top + 'px',
+                    left: '0px',
+                    width: this.pageContentAreaWidthPx + 'px',
+                    height: this.gutterPx + 'px',
+                };
+            },
+
+            calculateColumnGutterStyle(page, rowIndex, colIndex) {
+                // This gutter is AFTER the specified column
+                const colStyle = this.calculateColumnStyle(page, rowIndex, colIndex);
+                const left = parseFloat(colStyle.left) + parseFloat(colStyle.width);
+                return {
+                    position: 'absolute',
+                    top: '0px', // Relative to row
+                    left: left + 'px',
+                    width: this.gutterPx + 'px',
+                    height: colStyle.height, // Same height as columns in that row
+                };
+            },
+
+            getImageUrl(imagePath) {
+                const imgData = this.availableImages.find(img => img.path === imagePath);
+                return imgData ? imgData.url : '';
+            },
+
+            async calculateImageTagStyle(pageId, rowIndex, colIndex, imagePath) {
+                const cell = this._getCell(pageId, rowIndex, colIndex);
+                if (!cell || !cell.path) return { display: 'none' };
+
+                const colStyle = this.calculateColumnStyle(this.getPageById(pageId), rowIndex, colIndex);
+                const cellRenderedWidthPx = parseFloat(colStyle.width);
+                const cellRenderedHeightPx = parseFloat(colStyle.height);
+
+                let originalDims;
+                try {
+                    originalDims = await this.getOriginalImageDimensions(imagePath);
+                } catch (e) {
+                    console.error(`Cannot get original dimensions for ${imagePath}`, e);
+                    return { display: 'none' }; // Or some error display
+                }
+                
+                if (!originalDims || !originalDims.width || !originalDims.height) {
+                     console.warn(`Original dimensions for ${imagePath} are zero or undefined.`);
+                     return { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'pink' }; // Fallback
+                }
+
+
+                const crop = cell; // crop data is directly on cell object {x,y,width,height}
+
+                // If any crop dimension is zero, it's problematic.
+                if (!crop.width || !crop.height) {
+                    console.warn(`Crop dimensions for ${imagePath} in cell ${pageId}-${rowIndex}-${colIndex} are zero. Auto-cropping.`);
+                    const newCrop = await this.performAutoCrop(imagePath, cellRenderedWidthPx, cellRenderedHeightPx);
+                    if (newCrop) {
+                        Object.assign(cell, newCrop); // Update cell's crop info
+                    } else {
+                         return { width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'red' }; // Fallback
+                    }
+                }
+
+
+                const scaleToFillWidth = cellRenderedWidthPx / crop.width;
+                const scaleToFillHeight = cellRenderedHeightPx / crop.height;
+                const scale = Math.max(scaleToFillWidth, scaleToFillHeight);
+
+                // Translate to bring the cropped region's top-left to origin, then center it if needed
+                const translateX = -crop.x * scale + (cellRenderedWidthPx - crop.width * scale) / 2;
+                const translateY = -crop.y * scale + (cellRenderedHeightPx - crop.height * scale) / 2;
+                
+                return {
+                    width: originalDims.width + 'px',
+                    height: originalDims.height + 'px',
+                    transform: `scale(${scale.toFixed(6)}) translate(${translateX.toFixed(2)}px, ${translateY.toFixed(2)}px)`,
+                };
+            },
+
+            // Navigation
+            nextView() {
+                if (this.currentView < this.numViews - 1) {
+                    this.currentView++;
+                }
+            },
+            previousView() {
+                if (this.currentView > 0) {
+                    this.currentView--;
+                }
+            },
+            goToImagePage(imagePath) {
+                for (let v = 0; v < this.numViews; v++) {
+                    let pagesInView = [];
+                    if (v === 0) { // First page
+                        pagesInView.push(this.album.pages[0]);
+                    } else if (v === this.numViews - 1) { // Last page
+                        pagesInView.push(this.album.pages[this.numAlbumPages - 1]);
+                    } else { // Spread
+                        const leftPageIndexInAlbum = 1 + (v - 1) * 2;
+                        pagesInView.push(this.album.pages[leftPageIndexInAlbum]);
+                        pagesInView.push(this.album.pages[leftPageIndexInAlbum + 1]);
+                    }
+
+                    for (const page of pagesInView) {
+                        if (page.rows.some(row => row.columns.some(col => col.path === imagePath))) {
+                            this.currentView = v;
+                            return;
+                        }
+                    }
+                }
+            },
+
+            // Page Actions
+            addSpread() {
+                // Adds after the current view. If current view is the last single page, it adds before it.
+                const newPage1 = this.createPage("2-2"); // Default new spread layout
+                const newPage2 = this.createPage("2-2");
+
+                let insertionIndex;
+                if (this.currentView === 0 && this.numAlbumPages === 1) { // Only first page exists
+                    insertionIndex = 1; // Insert after first page
+                     this.album.pages.splice(insertionIndex, 0, newPage1, newPage2);
+                     // Need a new last page
+                     this.album.pages.push(this.createPage("1"));
+                } else if (this.currentView === 0) { // Viewing first page, but more pages exist
+                    insertionIndex = 1; // Insert after first page
+                    this.album.pages.splice(insertionIndex, 0, newPage1, newPage2);
+                } else if (this.currentView === this.numViews - 1) { // Viewing last page
+                    insertionIndex = this.numAlbumPages - 1; // Insert before last page
+                    this.album.pages.splice(insertionIndex, 0, newPage1, newPage2);
+                } else { // Viewing a spread
+                    const currentRightPageIndexInAlbum = 1 + (this.currentView - 1) * 2 + 1;
+                    insertionIndex = currentRightPageIndexInAlbum + 1;
+                    this.album.pages.splice(insertionIndex, 0, newPage1, newPage2);
+                }
+                
+                this.currentView++; // Move to the newly added spread (or the one after first page)
+                this.saveAlbum();
+            },
+
+            deleteSpread() {
+                if (this.isCurrentViewSinglePage || this.numAlbumPages <= 2) { // Cannot delete first/last single pages or if it's the only spread
+                    alert("Cannot delete single pages or the only spread.");
+                    return;
+                }
+                if (!confirm("Are you sure you want to delete this spread? Images will be returned to the bank.")) return;
+
+                const leftPageIndexInAlbum = 1 + (this.currentView - 1) * 2;
+                const removedPages = this.album.pages.splice(leftPageIndexInAlbum, 2);
+                
+                removedPages.forEach(page => {
+                    page.rows.forEach(row => row.columns.forEach(col => {
+                        if (col.path) this.returnImageToBank(col.path);
+                    }));
+                });
+
+                if (this.currentView >= this.numViews) { // currentView might be out of bounds if last spread deleted
+                    this.currentView = this.numViews - 1;
+                }
+                this.updateUsedImageStatus();
+                this.saveAlbum();
+            },
+
+            moveSpread(direction) {
+                if (this.isCurrentViewSinglePage) return;
+
+                const spreadPagesStartIndex = 1 + (this.currentView - 1) * 2;
+                const spreadToMove = this.album.pages.slice(spreadPagesStartIndex, spreadPagesStartIndex + 2);
+
+                if (direction === 'left' && this.currentView > 1) {
+                    // Remove spread from current position
+                    this.album.pages.splice(spreadPagesStartIndex, 2);
+                    // Insert it one spread position to the left
+                    const targetIndex = 1 + (this.currentView - 2) * 2;
+                    this.album.pages.splice(targetIndex, 0, ...spreadToMove);
+                    this.currentView--;
+                    this.saveAlbum();
+                } else if (direction === 'right' && this.currentView < this.numViews - 2) {
+                    // Remove spread from current position
+                    this.album.pages.splice(spreadPagesStartIndex, 2);
+                    // Insert it one spread position to the right
+                    const targetIndex = 1 + (this.currentView) * 2; // currentView is old, so it's correct
+                    this.album.pages.splice(targetIndex, 0, ...spreadToMove);
+                    this.currentView++;
+                    this.saveAlbum();
+                }
+            },
+            
+            // Layout Change
+            toggleLayoutMenu(pageId, event) {
+                if (this.showLayoutMenuForPageId === pageId) {
+                    this.closeLayoutMenu();
+                } else {
+                    this.showLayoutMenuForPageId = pageId;
+                    this.layoutMenuTargetButton = event.target; // Store for positioning
+                    this.$nextTick(() => this.positionLayoutMenu(pageId));
+                }
+            },
+            closeLayoutMenu() {
+                this.showLayoutMenuForPageId = null;
+                this.layoutMenuTargetButton = null;
+            },
+            getLayoutMenuPosition(pageId) { // Dynamic styling for menu
+                // This is a simplified positioning. A robust solution might use Popper.js or similar.
+                if (!this.layoutMenuTargetButton) return {};
+                const pageInfo = this.displayedPagesInfo.find(p => p.page.id === pageId);
+                if (!pageInfo) return {};
+
+                const rect = this.layoutMenuTargetButton.getBoundingClientRect();
+                // Position relative to the viewport, then it will be scaled by albumScale if menu is inside page.
+                // For simplicity, let's position it near the icon.
+                // The icon itself is absolutely positioned within the scaled page.
+                // So, we can position the menu relative to the page container.
+                if (pageInfo.side === 'left') {
+                    return { top: '30px', left: '5px' }; // Approx below icon
+                } else { // right page
+                    return { top: '30px', right: '5px' };
+                }
+            },
+            positionLayoutMenu(pageId) {
+                // This function is not strictly needed if using the simplified CSS above,
+                // but could be used for more complex positioning if the menu were outside the scaled page.
+            },
+
+            async changeLayout(pageId, newLayoutKey) {
+                const page = this.getPageById(pageId);
+                if (!page || page.layout === newLayoutKey) {
+                    this.closeLayoutMenu();
+                    return;
+                }
+
+                const oldLayoutKey = page.layout;
+                const oldRows = JSON.parse(JSON.stringify(page.rows)); // Deep copy of old structure
+                const newLayoutTemplate = LAYOUTS[newLayoutKey];
+
+                // Collect images from old layout
+                const oldImages = [];
+                oldRows.forEach((row, rIdx) => {
+                    row.columns.forEach((col, cIdx) => {
+                        if (col.path) {
+                            oldImages.push({ ...col, oldRowIdx: rIdx, oldColIdx: cIdx });
+                        }
+                    });
+                });
+
+                // Apply new layout structure
+                page.rows = JSON.parse(JSON.stringify(newLayoutTemplate.rows));
+                page.layout = newLayoutKey;
+
+                // Try to place old images into new layout
+                const placedImagesPaths = new Set();
+
+                // Specific strategy: 3-2 <-> 2-3: swap rows
+                if ((oldLayoutKey === '3-2' && newLayoutKey === '2-3') || (oldLayoutKey === '2-3' && newLayoutKey === '3-2')) {
+                    page.rows = oldRows.reverse(); // Assumes rows are compatible, just reversed
+                    // Update width_grid and height_percent from template if they differ (though for these two, they might be same)
+                    page.rows.forEach((r, rIdx) => {
+                        r.height_percent = newLayoutTemplate.rows[rIdx].height_percent;
+                        r.columns.forEach((c, cIdx) => {
+                            c.width_grid = newLayoutTemplate.rows[rIdx].columns[cIdx].width_grid;
+                            // No auto-crop needed if only row order changed and cell structures are compatible.
+                            // But if width_grid/height_percent changed, auto-crop is needed.
+                            // For simplicity, let's assume this swap is "smart" and doesn't need immediate re-crop
+                            // unless dimensions truly change. The generic logic below will handle re-crop.
+                        });
+                    });
+                     oldImages.forEach(img => placedImagesPaths.add(img.path)); // Mark all as "placed"
+                } else {
+                     // Generic placement: try to match old cell [r][c] to new cell [r][c]
+                    page.rows.forEach((newRow, rIdx) => {
+                        newRow.columns.forEach(async (newCol, cIdx) => {
+                            const correspondingOldImage = oldImages.find(
+                                img => img.oldRowIdx === rIdx && img.oldColIdx === cIdx && !placedImagesPaths.has(img.path)
+                            );
+                            if (correspondingOldImage) {
+                                newCol.path = correspondingOldImage.path;
+                                newCol.x = correspondingOldImage.x;
+                                newCol.y = correspondingOldImage.y;
+                                newCol.width = correspondingOldImage.width;
+                                newCol.height = correspondingOldImage.height;
+                                placedImagesPaths.add(correspondingOldImage.path);
+
+                                // Check if re-crop is needed
+                                const oldCellConfig = oldRows[rIdx]?.columns[cIdx];
+                                const oldRowConfig = oldRows[rIdx];
+                                if (oldCellConfig && oldRowConfig) {
+                                    if (newRow.height_percent !== oldRowConfig.height_percent || newCol.width_grid !== oldCellConfig.width_grid) {
+                                        await this.triggerAutoCropForCell(page.id, rIdx, cIdx);
+                                    }
+                                } else { // Structure changed significantly, def re-crop
+                                    await this.triggerAutoCropForCell(page.id, rIdx, cIdx);
+                                }
+                            }
+                        });
+                    });
+                }
+                
+                // Special case: from any to "1"
+                if (newLayoutKey === "1" && oldLayoutKey !== "1") {
+                    const firstImage = oldImages.find(img => !placedImagesPaths.has(img.path) || (img.oldRowIdx === 0 && img.oldColIdx === 0));
+                    if (firstImage) {
+                        page.rows[0].columns[0].path = firstImage.path;
+                        page.rows[0].columns[0].x = firstImage.x;
+                        page.rows[0].columns[0].y = firstImage.y;
+                        page.rows[0].columns[0].width = firstImage.width;
+                        page.rows[0].columns[0].height = firstImage.height;
+                        placedImagesPaths.add(firstImage.path);
+                        await this.triggerAutoCropForCell(page.id, 0, 0);
+                    }
+                }
+
+                // Special case: from "1" to any other multi-cell layout
+                if (oldLayoutKey === "1" && newLayoutKey !== "1" && oldImages.length > 0) {
+                    const imageFromSingle = oldImages[0]; // There's only one possible image
+                    if (page.rows[0] && page.rows[0].columns[0]) { // If new layout has a top-left cell
+                        page.rows[0].columns[0].path = imageFromSingle.path;
+                        page.rows[0].columns[0].x = imageFromSingle.x;
+                        page.rows[0].columns[0].y = imageFromSingle.y;
+                        page.rows[0].columns[0].width = imageFromSingle.width;
+                        page.rows[0].columns[0].height = imageFromSingle.height;
+                        placedImagesPaths.add(imageFromSingle.path);
+                        await this.triggerAutoCropForCell(page.id, 0, 0);
+                    }
+                }
+
+
+                // Return unplaced images to bank
+                oldImages.forEach(img => {
+                    if (!placedImagesPaths.has(img.path)) {
+                        this.returnImageToBank(img.path);
+                    }
+                });
+                
+                this.updateUsedImageStatus();
+                this.closeLayoutMenu();
+                await this.saveAlbum();
+                // Force re-render of styles if necessary, Alpine should handle it.
+                this.$nextTick(() => this.resizeAlbumPreview()); // Recalculate scale, etc.
+            },
+
+            // Drag and Drop
+            handleImageBankDragStart(event, image) {
+                this.draggedImageInfo = { type: 'bank', path: image.path };
+                event.dataTransfer.setData('text/plain', image.path);
+                event.dataTransfer.effectAllowed = 'copyMove';
+            },
+            handleCellDragStart(event, pageId, rowIndex, colIndex, imagePath) {
+                this.draggedImageInfo = { type: 'cell', path: imagePath, pageId, rowIndex, colIndex };
+                event.dataTransfer.setData('text/plain', imagePath);
+                event.dataTransfer.effectAllowed = 'move';
+            },
+            async handleDropOnCell(event, targetPageId, targetRowIndex, targetColIndex) {
+                if (!this.draggedImageInfo) return;
+
+                const targetCell = this._getCell(targetPageId, targetRowIndex, targetColIndex);
+                const draggedPath = this.draggedImageInfo.path;
+
+                // If target cell has an image, store it temporarily
+                const imageInTargetCellPath = targetCell.path;
+                const imageInTargetCellCrop = imageInTargetCellPath ? { x:targetCell.x, y:targetCell.y, width:targetCell.width, height:targetCell.height } : null;
+
+                // Place dragged image into target cell
+                targetCell.path = draggedPath;
+                await this.triggerAutoCropForCell(targetPageId, targetRowIndex, targetColIndex, draggedPath);
+
+
+                if (this.draggedImageInfo.type === 'bank') {
+                    // If target had an image, return it to bank
+                    if (imageInTargetCellPath) this.returnImageToBank(imageInTargetCellPath);
+                } else if (this.draggedImageInfo.type === 'cell') {
+                    const sourcePageId = this.draggedImageInfo.pageId;
+                    const sourceRowIndex = this.draggedImageInfo.rowIndex;
+                    const sourceColIndex = this.draggedImageInfo.colIndex;
+                    const sourceCell = this._getCell(sourcePageId, sourceRowIndex, sourceColIndex);
+
+                    if (sourcePageId === targetPageId && sourceRowIndex === targetRowIndex && sourceColIndex === targetColIndex) {
+                        // Dropped on itself, do nothing to source, restore target's original if it had one
+                        if(imageInTargetCellPath) {
+                            targetCell.path = imageInTargetCellPath;
+                            Object.assign(targetCell, imageInTargetCellCrop);
+                        } else {
+                            targetCell.path = null; // Should already be this way
+                        }
+                    } else {
+                         // If target had an image, move it to source cell
+                        if (imageInTargetCellPath) {
+                            sourceCell.path = imageInTargetCellPath;
+                            Object.assign(sourceCell, imageInTargetCellCrop); // Keep its crop
+                            // No, should auto-crop for the source cell's dimensions
+                            await this.triggerAutoCropForCell(sourcePageId, sourceRowIndex, sourceColIndex, imageInTargetCellPath);
+                        } else {
+                            // Source cell becomes empty
+                            sourceCell.path = null;
+                            delete sourceCell.x; delete sourceCell.y; delete sourceCell.width; delete sourceCell.height;
+                        }
+                    }
+                }
+                
+                this.updateUsedImageStatus();
+                this.draggedImageInfo = null;
+                await this.saveAlbum();
+            },
+            handleDropOnBank(event) {
+                if (this.draggedImageInfo && this.draggedImageInfo.type === 'cell') {
+                    const { pageId, rowIndex, colIndex, path } = this.draggedImageInfo;
+                    const cell = this._getCell(pageId, rowIndex, colIndex);
+                    cell.path = null;
+                    delete cell.x; delete cell.y; delete cell.width; delete cell.height;
+                    this.returnImageToBank(path); // path is already defined
+                    this.updateUsedImageStatus();
+                    this.saveAlbum();
+                }
+                this.draggedImageInfo = null;
+            },
+            handleDropOnOutside(event) { // For drops on gray area around pages
+                 if (this.draggedImageInfo && this.draggedImageInfo.type === 'cell') {
+                    // Check if the drop target is actually outside any page cell
+                    // A simple check: if event.target is the wrapper itself or album-preview
+                    if (event.target.id === 'album-preview-wrapper' || event.target.classList.contains('album-preview')) {
+                        this.handleDropOnBank(event); // Treat as dropping on bank
+                    }
+                 }
+                 // Otherwise, let cell drop handlers manage it or ignore
+            },
+            handleDragEnd() { // Clean up if drag ends without a valid drop
+                // this.draggedImageInfo = null; // This might clear too early if drop is async
+            },
+            returnImageToBank(imagePath) {
+                const img = this.availableImages.find(i => i.path === imagePath);
+                if (img) img.isUsed = false;
+            },
+
+            // Cropping
+            async performAutoCrop(imagePath, cellWidthPx, cellHeightPx) {
+                let originalDims;
+                try {
+                    originalDims = await this.getOriginalImageDimensions(imagePath);
+                } catch (e) {
+                    console.error("AutoCrop: Cannot get original dimensions for", imagePath, e);
+                    return null;
+                }
+
+                if (!originalDims || originalDims.width === 0 || originalDims.height === 0) {
+                    console.warn(`AutoCrop: Invalid original dimensions for ${imagePath}: ${originalDims.width}x${originalDims.height}`);
+                    return { x: 0, y: 0, width: 100, height: 100 }; // Default dummy crop
+                }
+
+
+                const imgAspect = originalDims.width / originalDims.height;
+                const cellAspect = cellWidthPx / cellHeightPx;
+
+                let cropW, cropH, cropX, cropY;
+
+                if (imgAspect > cellAspect) { // Image is wider or less tall than cell
+                    cropH = originalDims.height;
+                    cropW = originalDims.height * cellAspect;
+                    cropX = (originalDims.width - cropW) / 2;
+                    cropY = 0;
+                } else { // Image is taller or less wide than cell
+                    cropW = originalDims.width;
+                    cropH = originalDims.width / cellAspect;
+                    cropY = (originalDims.height - cropH) / 2;
+                    cropX = 0;
+                }
+                return { x: Math.round(cropX), y: Math.round(cropY), width: Math.round(cropW), height: Math.round(cropH) };
+            },
+
+            async triggerAutoCropForCell(pageId, rowIndex, colIndex, imagePathOverride = null) {
+                const page = this.getPageById(pageId);
+                const cell = page.rows[rowIndex].columns[colIndex];
+                const path = imagePathOverride || cell.path;
+                if (!path) return;
+
+                const colStyle = this.calculateColumnStyle(page, rowIndex, colIndex);
+                const cellWidthPx = parseFloat(colStyle.width);
+                const cellHeightPx = parseFloat(colStyle.height);
+
+                const cropData = await this.performAutoCrop(path, cellWidthPx, cellHeightPx);
+                if (cropData) {
+                    cell.x = cropData.x;
+                    cell.y = cropData.y;
+                    cell.width = cropData.width;
+                    cell.height = cropData.height;
+                }
+            },
+
+            async openCropModal(pageId, rowIndex, colIndex) {
+                const cell = this._getCell(pageId, rowIndex, colIndex);
+                if (!cell || !cell.path) return;
+
+                const imageUrl = this.getImageUrl(cell.path);
+                if (!imageUrl) {
+                    alert("Image source not found.");
+                    return;
+                }
+                
+                const colStyle = this.calculateColumnStyle(this.getPageById(pageId), rowIndex, colIndex);
+                const cellWidthPx = parseFloat(colStyle.width);
+                const cellHeightPx = parseFloat(colStyle.height);
+
+                this.croppingCellInfo = { pageId, rowIndex, colIndex, imagePath: cell.path, cellWidthPx, cellHeightPx };
+
+                if (this.croppieInstance) {
+                    this.croppieInstance.destroy();
+                }
+                const croppieContainer = document.getElementById('croppie-container');
+                croppieContainer.innerHTML = ''; // Clear previous
+
+                this.croppieInstance = new Croppie(croppieContainer, {
+                    url: imageUrl,
+                    viewport: { width: cellWidthPx * 0.8, height: cellHeightPx * 0.8, type: 'square' }, // viewport scaled for modal
+                    boundary: { width: cellWidthPx, height: cellHeightPx }, // boundary can be larger
+                    enableExif: true,
+                    enforceBoundary: true,
+                });
+                
+                // Set initial zoom and points from existing crop
+                // Croppie points are [topLeftX, topLeftY, bottomRightX, bottomRightY] of the crop area on the original image
+                const currentCrop = { x: cell.x, y: cell.y, width: cell.width, height: cell.height };
+                this.croppieInstance.bind({
+                    url: imageUrl,
+                    points: [
+                        currentCrop.x, 
+                        currentCrop.y, 
+                        currentCrop.x + currentCrop.width, 
+                        currentCrop.y + currentCrop.height
+                    ]
+                });
+
+                this.bsCropModal.show();
+            },
+            async applyCrop() {
+                if (!this.croppieInstance || !this.croppingCellInfo) return;
+                
+                const result = await this.croppieInstance.result({ type: 'rawcanvas', size: 'original' });
+                // Croppie's `get` method returns the current crop points relative to the *displayed, possibly zoomed* image.
+                // We need the crop rectangle in terms of the *original image pixels*.
+                // The `points` property of the `get()` result are [x1, y1, x2, y2] of the crop viewport on the *original* image.
+                const cropData = this.croppieInstance.get().points; 
+
+                const cell = this._getCell(this.croppingCellInfo.pageId, this.croppingCellInfo.rowIndex, this.croppingCellInfo.colIndex);
+                cell.x = Math.round(cropData[0]);
+                cell.y = Math.round(cropData[1]);
+                cell.width = Math.round(cropData[2] - cropData[0]);
+                cell.height = Math.round(cropData[3] - cropData[1]);
+
+                this.bsCropModal.hide();
+                this.croppieInstance.destroy();
+                this.croppieInstance = null;
+                this.croppingCellInfo = null;
+                await this.saveAlbum();
+            },
+            cancelCrop() {
+                if (this.croppieInstance) {
+                    this.croppieInstance.destroy();
+                    this.croppieInstance = null;
+                }
+                this.croppingCellInfo = null;
+                // bsCropModal.hide() is handled by data-bs-dismiss
+            },
+
+            // Resizing Gutters
+            initGutterResize(event, type, pageId, primaryIndex, secondaryIndex = null) { // secondaryIndex for col (is colIndex)
+                const page = this.getPageById(pageId);
+                this.resizingGutterInfo = {
+                    type, // 'row' or 'col'
+                    pageId,
+                    primaryIndex, // rowIndex for row resize, rowIndex for col resize (row of the col)
+                    secondaryIndex, // colIndex for col resize (index of first col in pair)
+                    initialMouseX: event.clientX,
+                    initialMouseY: event.clientY,
+                    pageContentWidthPx: this.pageContentAreaWidthPx, // Unscaled
+                    pageContentHeightPx: this.pageContentAreaHeightPx, // Unscaled
+                };
+
+                if (type === 'row') {
+                    const row1 = page.rows[primaryIndex];
+                    const row2 = page.rows[primaryIndex + 1];
+                    this.resizingGutterInfo.initialSizes = [row1.height_percent, row2.height_percent];
+                } else { // col
+                    const row = page.rows[primaryIndex];
+                    const col1 = row.columns[secondaryIndex];
+                    const col2 = row.columns[secondaryIndex + 1];
+                    this.resizingGutterInfo.initialSizes = [col1.width_grid, col2.width_grid];
+                    // For column % calculation, need net width for columns in that row
+                    const numColGutters = row.columns.length - 1;
+                    const totalColGutterWidthPx = numColGutters > 0 ? numColGutters * this.gutterPx : 0;
+                    this.resizingGutterInfo.netWidthForColsPx = this.pageContentAreaWidthPx - totalColGutterWidthPx;
+                }
+                
+                document.addEventListener('mousemove', this.handleGutterMouseMoveBound);
+                document.addEventListener('mouseup', this.handleGutterMouseUpBound);
+            },
+            handleGutterMouseMove(event) {
+                if (!this.resizingGutterInfo) return;
+                event.preventDefault();
+
+                const { type, pageId, primaryIndex, secondaryIndex, initialMouseX, initialMouseY, initialSizes, pageContentWidthPx, pageContentHeightPx, netWidthForColsPx } = this.resizingGutterInfo;
+                
+                const page = this.getPageById(pageId);
+                const deltaX = (event.clientX - initialMouseX) / this.albumScale; // Unscaled delta
+                const deltaY = (event.clientY - initialMouseY) / this.albumScale; // Unscaled delta
+
+                if (type === 'row') {
+                    const deltaPercent = (deltaY / pageContentHeightPx) * 100;
+                    let newHeight1 = initialSizes[0] + deltaPercent;
+                    let newHeight2 = initialSizes[1] - deltaPercent;
+
+                    // Enforce min height
+                    if (newHeight1 < this.MIN_CELL_PERCENT) {
+                        newHeight2 -= (this.MIN_CELL_PERCENT - newHeight1);
+                        newHeight1 = this.MIN_CELL_PERCENT;
+                    }
+                    if (newHeight2 < this.MIN_CELL_PERCENT) {
+                        newHeight1 -= (this.MIN_CELL_PERCENT - newHeight2);
+                        newHeight2 = this.MIN_CELL_PERCENT;
+                    }
+                    // Check if sum is still 100, adjust if clamping made it not so (shouldn't happen if logic is right)
+                    const sum = newHeight1 + newHeight2;
+                    if (Math.abs(sum - (initialSizes[0] + initialSizes[1])) > 0.1) { // Allow for small float errors
+                         // This case means both hit min and there's no room. Revert or stop.
+                         // For now, just proceed. The sum must be preserved.
+                         const originalSum = initialSizes[0] + initialSizes[1];
+                         if (newHeight1 + newHeight2 > originalSum) { // if sum increased, reduce proportionally
+                            const exceso = newHeight1 + newHeight2 - originalSum;
+                            newHeight1 -= exceso * (newHeight1 / (newHeight1+newHeight2));
+                            newHeight2 -= exceso * (newHeight2 / (newHeight1+newHeight2));
+                         } // if sum decreased, it means one was clamped hard.
+                    }
+
+
+                    if (newHeight1 >= this.MIN_CELL_PERCENT && newHeight2 >= this.MIN_CELL_PERCENT) {
+                        page.rows[primaryIndex].height_percent = parseFloat(newHeight1.toFixed(2));
+                        page.rows[primaryIndex + 1].height_percent = parseFloat(newHeight2.toFixed(2));
+                        // Ensure sum is exactly what it was (e.g. 100 if two rows, or initialSum if more complex)
+                        const currentSum = page.rows[primaryIndex].height_percent + page.rows[primaryIndex+1].height_percent;
+                        const targetSum = initialSizes[0] + initialSizes[1];
+                        if (Math.abs(currentSum - targetSum) > 0.01) {
+                            page.rows[primaryIndex+1].height_percent = parseFloat((targetSum - page.rows[primaryIndex].height_percent).toFixed(2));
+                        }
+                    }
+
+                } else { // col
+                    const deltaGrid = (deltaX / netWidthForColsPx) * 12; // Convert pixel delta to grid units
+                    let newGrid1 = initialSizes[0] + deltaGrid;
+                    let newGrid2 = initialSizes[1] - deltaGrid;
+
+                    if (newGrid1 < this.MIN_CELL_GRID_UNITS) {
+                        newGrid2 -= (this.MIN_CELL_GRID_UNITS - newGrid1);
+                        newGrid1 = this.MIN_CELL_GRID_UNITS;
+                    }
+                    if (newGrid2 < this.MIN_CELL_GRID_UNITS) {
+                        newGrid1 -= (this.MIN_CELL_GRID_UNITS - newGrid2);
+                        newGrid2 = this.MIN_CELL_GRID_UNITS;
+                    }
+                    
+                    const row = page.rows[primaryIndex];
+                    if (newGrid1 >= this.MIN_CELL_GRID_UNITS && newGrid2 >= this.MIN_CELL_GRID_UNITS) {
+                        row.columns[secondaryIndex].width_grid = parseFloat(newGrid1.toFixed(2));
+                        row.columns[secondaryIndex + 1].width_grid = parseFloat(newGrid2.toFixed(2));
+                        // Ensure sum of grid units is preserved for the pair
+                        const currentSum = row.columns[secondaryIndex].width_grid + row.columns[secondaryIndex+1].width_grid;
+                        const targetSum = initialSizes[0] + initialSizes[1];
+                         if (Math.abs(currentSum - targetSum) > 0.01) {
+                            row.columns[secondaryIndex+1].width_grid = parseFloat((targetSum - row.columns[secondaryIndex].width_grid).toFixed(2));
+                        }
+                    }
+                }
+            },
+            async handleGutterMouseUp(event) {
+                document.removeEventListener('mousemove', this.handleGutterMouseMoveBound);
+                document.removeEventListener('mouseup', this.handleGutterMouseUpBound);
+
+                if (this.resizingGutterInfo) {
+                    const { type, pageId, primaryIndex, secondaryIndex } = this.resizingGutterInfo;
+                    const page = this.getPageById(pageId);
+                    if (type === 'row') {
+                        // Auto-crop all images in primaryIndex row and primaryIndex+1 row
+                        for (let c = 0; c < page.rows[primaryIndex].columns.length; c++) {
+                            if (page.rows[primaryIndex].columns[c].path) await this.triggerAutoCropForCell(pageId, primaryIndex, c);
+                        }
+                        for (let c = 0; c < page.rows[primaryIndex+1].columns.length; c++) {
+                            if (page.rows[primaryIndex+1].columns[c].path) await this.triggerAutoCropForCell(pageId, primaryIndex+1, c);
+                        }
+                    } else { // col
+                        // Auto-crop images in the two affected columns
+                        const row = page.rows[primaryIndex];
+                        if (row.columns[secondaryIndex].path) await this.triggerAutoCropForCell(pageId, primaryIndex, secondaryIndex);
+                        if (row.columns[secondaryIndex+1].path) await this.triggerAutoCropForCell(pageId, primaryIndex, secondaryIndex+1);
+                    }
+                    this.resizingGutterInfo = null;
+                    await this.saveAlbum();
+                }
+            },
+            // Bound versions for event listeners
+            get handleGutterMouseMoveBound() { return this.handleGutterMouseMove.bind(this); },
+            get handleGutterMouseUpBound() { return this.handleGutterMouseUp.bind(this); },
+
+            // UI Helpers
+            resizeAlbumPreview() {
+                this.$nextTick(() => { // Ensure DOM is updated for measurements
+                    const wrapper = document.getElementById('album-preview-wrapper');
+                    if (!wrapper || this.numAlbumPages === 0) {
+                        this.albumScale = 1;
+                        return;
+                    }
+                    
+                    const wrapperWidth = wrapper.offsetWidth;
+                    const wrapperHeight = wrapper.offsetHeight;
+
+                    const currentDisplay = this.displayedPagesInfo;
+
+                    if (!currentDisplay || currentDisplay.length === 0) {
+                         this.albumScale = 1;
+                         return;
+                    }
+
+                    // For both single-page views (which use margins to simulate a spread)
+                    // and double-page views, the total content width is based on a full spread.
+                    const totalContentWidthPx = 2 * this.pageOuterWidthPx + this.gutterPx;
+                    const totalContentHeightPx = this.pageOuterHeightPx;
+                    
+                    // Subtract padding from wrapper available space
+                    const availableWidth = wrapperWidth - 40; // 20px padding each side
+                    const availableHeight = wrapperHeight - 40;
+
+                    const scaleX = availableWidth / totalContentWidthPx;
+                    const scaleY = availableHeight / totalContentHeightPx;
+                    
+                    this.albumScale = Math.min(scaleX, scaleY, 1); // Cap scale at 1 (no upscale beyond natural size)
+                });
+            },
+        }));
+    });
+    </script>
+</body>
+</html>

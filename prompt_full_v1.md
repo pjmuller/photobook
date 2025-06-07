@@ -7,7 +7,7 @@ Prioritize simple, effective code, a clean UI, and a smooth user experience.
 # Specification
 - each page is 35cm wide and 29cm high
 - 1cm margin from the outer edges
-- 0.5cm gutter separates all rows and columns within the page content area
+- 0.5cm gutter separates all rows and cells within the page content area
 - Page Spreads:
   - The first page is a single page, displayed on the right.
   - All subsequent pages are displayed as double-page spreads (e.g., 2-3, 4-5).
@@ -16,57 +16,64 @@ Prioritize simple, effective code, a clean UI, and a smooth user experience.
 
 
 # Layouts
-- Define base page dimensions (width, height, margin) using `cm` units in the CSS, ideally with CSS variables.
-- For dynamic calculations in JavaScript, create helper functions to determine the precise pixel dimensions of the page content area, rows, and columns. These helpers are essential for accurate resize and crop calculations.
-- Gutters between rows and columns should have a fixed pixel size within the JavaScript model to simplify the resizing logic.
-- Use CSS Flexbox for the high-level structure of rows and columns.
-- A Layout consists of rows, and each row is divided into columns (that consist of 1-12 bootstrap columns). 
+- For dynamic calculations in JavaScript, create helper functions to determine the precise pixel dimensions of the page content area, rows, and cells. These helpers are essential for accurate resize and crop calculations.
+- Gutters between rows and cells should have a fixed pixel size within the JavaScript model to simplify the resizing logic.
+- A Layout consists of rows, and each row is divided into 1, 2 or 3 cells. 
   - the height of images within a row is always the same
 - layouts contain placeholder cells, these show as dotted lines with "Drop image" in it
 - Predefined Layouts
   - "1": 
-    - 1 row, 1 column (full picture page)
+    - 1 row, 1 cell (full picture page)
     - symbol: '██'
   - "2-2": 50% height_percent each row
-    - row 1: 2 columns, 6, 6 width_grid
-    - row 2: 2 columns, 6, 6 width_grid
+    - row 1: 2 cells, 6, 6 width_grid
+    - row 2: 2 cells, 6, 6 width_grid
     - symbol: '██▌██▌\n██▌██▌'
   - "2-3": 50% height_percent each row
-    - row 1: 2 columns, 4, 8 width_grid
-    - row 2: 3 columns, 4, 4, 4 width_grid
+    - row 1: 2 cells, 4, 8 width_grid
+    - row 2: 3 cells, 4, 4, 4 width_grid
     - symbol: '██▌██▌\n█▌█▌█▌'
   - "3-2": 50% height_percent each row
-    - row 1: 3 columns, 4, 4, 4 width_grid
-    - row 2: 2 columns, 6, 6 width_grid
+    - row 1: 3 cells, 4, 4, 4 width_grid
+    - row 2: 2 cells, 6, 6 width_grid
     - symbol: '█▌█▌█▌\n██▌██▌'
+
+- **Grid Calculation Strategy**:
+  - All page, row, cell, and gutter dimensions must be calculated in **JavaScript** to final **pixel** values, which are then applied via inline styles. This ensures the resizing logic is perfectly synchronized with the rendered output.
+  - Avoid using CSS `calc()`, `flex-basis` percentages, or the `gap` property for the core layout, as the JavaScript needs full, explicit control over dimensions.
+  - Create a primary `cmToPx(cm)` helper function in JS that uses a standard DPI (e.g., 96) for a consistent layout model.
+  - The JS logic must calculate the available space for cells by first determining the content area (page size minus margins), and then subtracting the total pixel size of all gutter elements within that area. The `height_percent` and `width_grid` values should be applied to this remaining "net" space.
+  - Gutters must be implemented as separate `div` elements, not as CSS `margin` or `gap`.
 
 # Change layout of a page
 - A layout change icon (`bi-grid-fill`) should be visible on the top-left of a left page and top-right of a right page.
 - It should not be active on the first and last single pages of the album. (these always have layout "1")
-- Clicking the icon opens a small menu showing the 4 available layouts. Visualize the layouts using the unicode symbols block characters, not their codenames ("1", "2-2", "2-3", "3-2").
-  - on click of a layout,make the change and close the menu
+- Clicking the icon opens a submenu showing the 4 available layouts. Visualize the layouts using the unicode symbols block characters, not their codenames ("1", "2-2", "2-3", "3-2").
+  - on click of a layout, change the current page layout and close the menu
 - you can change from any layout to any other layout
 - rule of thumb: keep as much as possible of the attributes the same so that the user doesn't have to re-crop the images (`height_percent` or `width_grid`, `x`, `y`, `width`, `height`, `path`, ...)
 - only recrop the images to fill the cells where we changed `height_percent` or `width_grid` for that cell
 - when we change to a layout that can hold less images (e.g from 5 images to 4, 5 or 4 images to 1), returned the unused images to the image bank
 - specific switch strategies:
-  - from "2-3" to "2-2". Drop the 3rd image in the top row. Reset the `width_grid` of the top row to 6, 6
-  - from "3-2" to "2-2". Drop the 3rd image in the bottom row. Reset the `width_grid` of the bottom row to 6, 6
+  - from "2-3" to "2-2". Drop the 3rd image in the bottom row. Reset the `width_grid` of the bottom row to 6, 6
+  - from "3-2" to "2-2". Drop the 3rd image in the top row. Reset the `width_grid` of the top row to 6, 6
   - from "3-2" to "2-3" (or vice versa). just swap the rows (and keep all attributes the same)
   - from any to "1". Keep the first image you find (top to bottom, left to right) and drop all the others (reactivate them in the bottom bar), reset the `height_percent` to 100%, `width_grid` to 12
   - from "1" to any, set the image in the top left cell. Reset the `height_percent` of the 2 rows to 50% and use default `width_grid` (6,6 or 4,4,4)
-  - from "2-2" to "2-3" or "3-2". keep existing images, just add one extra column and reset `width_grid` in that row to 4, 4, 4
+  - from "2-2" to "2-3", keep top row exactly as is, add one extra cell in the bottom row and reset `width_grid` in that row to 4, 4, 4
+  - from "2-2" to "3-2", keep bottom row exactly as is, add one extra cell in the top row and reset `width_grid` in that row to 4, 4, 4
   - update the album.json file in the selected folder
 
 
 # Resizing
-- The user can resize rows and columns by dragging the gutters between them. The gutters should be invisible overlay elements that show a `row-resize` or `col-resize` cursor on hover.
+- The user can resize rows and cells by dragging the gutters between them. The gutters should be invisible overlay elements that show a `row-resize` or `col-resize` cursor on hover.
 - **Implementation Logic**:
   - On `mousedown` on a gutter, capture initial mouse coordinates and the initial `height_percent` or `width_grid` of the adjacent elements. Add `mousemove` and `mouseup` event listeners to the `document`.
-  - **Coordinate Scaling**: The main album preview is scaled to fit the viewport. **This is critical:** All mouse movement deltas (e.g., `event.clientX - startX`) MUST be divided by the current album scale factor to get the real, unscaled pixel delta.
-  - The unscaled pixel delta must be converted into a change in `%` or `grid units`. For example: `delta_percent = (unscaled_pixel_delta / container_pixel_height) * 100`.
-  - Update the `height_percent` or `width_grid` values in the Alpine.js data model, letting the UI update reactively.
-  - When resizing columns in a 3-column row, only the two columns adjacent to the dragged gutter should change their width; their combined width remains constant.
+  - **Coordinate Scaling & Clamping**: The main album preview is scaled to fit the viewport. This is critical:
+    - All mouse movement deltas (e.g., `event.clientX - startX`) **must** be divided by the current album scale factor to get the real, unscaled pixel delta.
+    - The unscaled pixel delta must be converted into a change in `%` or `grid units`. This conversion must be relative to the **total pixel dimension of the page's content area for that axis**. For example: `delta_percent = (unscaled_pixel_delta / page_content_area_height_in_px) * 100`.
+    - Enforce a minimum size to prevent cells from collapsing: a minimum `height_percent` of `10%` for rows and a minimum `width_grid` of `1` for columns.
+  - Update the `height_percent` or `width_grid` values in the Alpine.js data model, letting the UI update reactively. Ensure the sum of the resized properties remains constant.
   - On `mouseup`, remove the event listeners and immediately trigger the auto-crop function for all images within the resized cells.
 
 # UI
@@ -84,9 +91,10 @@ Prioritize simple, effective code, a clean UI, and a smooth user experience.
 - Displays all images from the selected folder sorted based on the EXIF data
   - if the EXIF data is not available put at the end and then sort these by filename
 - thumbs of all pictures of the selected folder
-  - in their original aspect ratio
-  - height of each image is 150px, width variable to keep aspect ratio
-- not used images: show a `cursor: grab` to drag the image to the main area
+  - All thumbnails must have a fixed height of 150px. Their width **must be calculated dynamically in JavaScript** based on the image's original aspect ratio to prevent any distortion.
+  - slightly rounded corners and subtle shadow
+- not used images
+  - show a `cursor: grab` to drag the image to the main area
 - used images:
   - cursor `pointer`
   - gray out
@@ -108,32 +116,32 @@ Do this after any CRUD operation.
 
 ```json
 {
-  "photobook_version": "0.1", // fixed version number, so we can change the format without breaking backwards compatibility
+  "photobook_version": "1.6", // fixed version number, so we can change the format without breaking backwards compatibility
   "pages": [
     {
       "id": "UUID", // for easy reference
-      "layout": "3-2", // (top row 3 columns, bottom row 2 columns) semi redundant as we can derive it from the rows and columns, though makes it easier for change layout logic
+      "layout": "3-2", // (top row 3 cells, bottom row 2 cells)
       "rows": [
         { // first row
           "height_percent": 30, // in % of the total height (29cm - 2cm edge margin - 0.5cm gutter)
-          "columns": [
+          "cells": [
             {
-              "width_grid": 4, // 1-10 (12 bootstrap columns total and we need at least 2 more images on this row)
+              "width_grid": 4, // min: 1, max: 12 (for this 3 cell row, the max is 10 as the other 2 cells need to be at least 1)
               "path": "image1.jpg", // inside of the selected folder
               "x": 15, // for cropping: x on original image (in pixels)
               "y": 90,
               "width": 1265,
               "height": 834
             },
-            { "width_grid": 4}, // 2nd column, waiting for an image to be dropped in
-            { "width_grid": 4}, // 3rd column
+            { "width_grid": 4}, // 2nd cell, waiting for an image to be dropped in
+            { "width_grid": 4}, // 3rd cell
           ]
         },
         { // 2nd row
           "height_percent": 70,
-          "columns": [
-            { "width_grid": 6}, // 1st column
-            { "width_grid": 6}, // 2nd column
+          "cells": [
+            { "width_grid": 6}, // 1st cell
+            { "width_grid": 6}, // 2nd cell
           ]
         },
       ]
@@ -165,12 +173,16 @@ Do this after any CRUD operation.
 - we will only use this on Chrome, no need for cross-browser support
 - this project is ran locally on a macbook
 - **HTML/CSS/JS**: A single `index.html` file.
-- **UI Rendering**: Use Alpine.js's `x-for` templates to render the album pages, rows, and columns. Avoid generating large HTML strings in JavaScript to inject with `x-html`, as this complicates reactive styling and event handling.
+- **JS Structure**: Structure the application's logic within a single Alpine.js factory function (e.g., `function photobookApp() { return { ... } }`). This promotes better code encapsulation and follows modern Alpine.js patterns.
+- **UI Rendering**: Use Alpine.js's `x-for` templates to render the album pages, rows, and cells. Avoid generating large HTML strings in JavaScript to inject with `x-html`, as this complicates reactive styling and event handling.
 - import libraries using cdn
   - bootstrap 5 & bootstrap icons
-  - alpinejs for the UI logic
+    - https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css
+    - https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js
+    - https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css
+  - https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js for the UI logic
   - https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js for crop on double click
-- https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js for date sorting
+  - https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js for date sorting
 - **Forbidden Libraries**: Do not use `jQuery` 
 
 Write the full code (A-Z) for the album builder in the index.html file, don't omit anything

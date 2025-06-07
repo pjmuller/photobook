@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photobook Creator</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- Croppie CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css">
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #f5f5f5;
+        }
+        
+        .app-container {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .main-area {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .album-viewport {
+            position: relative;
+            display: flex;
+            gap: 20px;
+            transform-origin: center;
+        }
+        
+        .page {
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        
+        .page-content {
+            position: absolute;
+        }
+        
+        .layout-row {
+            display: flex;
+            position: relative;
+        }
+        
+        .layout-cell {
+            position: relative;
+            overflow: hidden;
+            background: white;
+        }
+        
+        .layout-cell.empty {
+            border: 2px dashed #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #999;
+            font-size: 14px;
+        }
+        
+        .layout-cell img {
+            position: absolute;
+            transform-origin: top left;
+        }
+        
+        .gutter {
+            position: absolute;
+            z-index: 10;
+        }
+        
+        .gutter-horizontal {
+            cursor: row-resize;
+            height: 20px;
+            left: 0;
+            right: 0;
+            margin-top: -10px;
+        }
+        
+        .gutter-vertical {
+            cursor: col-resize;
+            width: 20px;
+            top: 0;
+            bottom: 0;
+            margin-left: -10px;
+        }
+        
+        .image-bank {
+            height: 170px;
+            background: #2c3e50;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            padding: 10px;
+        }
+        
+        .image-thumb {
+            display: inline-block;
+            height: 150px;
+            margin-right: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: transform 0.2s;
+            cursor: grab;
+        }
+        
+        .image-thumb.used {
+            opacity: 0.4;
+            cursor: pointer;
+        }
+        
+        .image-thumb:hover {
+            transform: scale(1.05);
+        }
+        
+        .floating-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+        }
+        
+        .page-numbers {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        
+        .layout-selector {
+            position: absolute;
+            z-index: 20;
+            cursor: pointer;
+            font-size: 20px;
+            color: #666;
+            padding: 5px;
+        }
+        
+        .layout-selector:hover {
+            color: #333;
+        }
+        
+        .layout-menu {
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 10px;
+            z-index: 30;
+        }
+        
+        .layout-option {
+            padding: 10px;
+            cursor: pointer;
+            font-family: monospace;
+            white-space: pre;
+            line-height: 1.2;
+        }
+        
+        .layout-option:hover {
+            background: #f0f0f0;
+        }
+        
+        .spinner-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .drag-over {
+            background: rgba(0, 123, 255, 0.1);
+            border: 2px dashed #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div x-data="photobookApp()" x-init="init()">
+        <!-- Loading Spinner -->
+        <div x-show="loading" class="spinner-overlay">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+
+        <!-- Initial State -->
+        <div x-show="!directoryHandle && !loading" class="d-flex justify-content-center align-items-center" style="height: 100vh;">
+            <button @click="selectFolder()" class="btn btn-primary btn-lg">
+                <i class="bi bi-folder-open"></i> Select Image Folder
+            </button>
+        </div>
+
+        <!-- Main App -->
+        <div x-show="directoryHandle && !loading" class="app-container">
+            <!-- Main Area -->
+            <div class="main-area">
+                <!-- Floating Buttons -->
+                <div class="floating-buttons">
+                    <div class="btn-group mb-2">
+                        <button @click="previousPage()" class="btn btn-secondary" :disabled="currentView === 0" data-bs-toggle="tooltip" title="Previous page">
+                            <i class="bi bi-arrow-left"></i>
+                        </button>
+                        <button @click="nextPage()" class="btn btn-secondary" :disabled="currentView >= maxView" data-bs-toggle="tooltip" title="Next page">
+                            <i class="bi bi-arrow-right"></i>
+                        </button>
+                    </div>
+                    <div class="btn-group">
+                        <button @click="addSpread()" class="btn btn-primary" :disabled="isLastPage" data-bs-toggle="tooltip" title="Add new spread">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                        <button @click="deleteSpread()" class="btn btn-danger" :disabled="!isSpread" data-bs-toggle="tooltip" title="Delete current spread">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown" :disabled="!isSpread">
+                                <i class="bi bi-arrow-left-right"></i>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" @click="moveSpreadLeft()" :class="{'disabled': !canMoveLeft}">
+                                    <i class="bi bi-arrow-bar-left"></i> Move Left
+                                </a></li>
+                                <li><a class="dropdown-item" @click="moveSpreadRight()" :class="{'disabled': !canMoveRight}">
+                                    <i class="bi bi-arrow-bar-right"></i> Move Right
+                                </a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Album Viewport -->
+                <div class="album-viewport" :style="{transform: `scale(${albumScale})`}">
+                    <template x-for="(page, pageIndex) in currentPages" :key="page.id">
+                        <div class="page" :style="pageStyle">
+                            <!-- Layout Selector -->
+                            <div x-show="canChangeLayout(pageIndex)" 
+                                 class="layout-selector"
+                                 :style="layoutSelectorStyle(pageIndex)"
+                                 @click="openLayoutMenu(pageIndex, $event)">
+                                <i class="bi bi-grid-fill"></i>
+                            </div>
+
+                            <!-- Page Content -->
+                            <div class="page-content" :style="contentStyle">
+                                <template x-for="(row, rowIndex) in page.rows" :key="rowIndex">
+                                    <div>
+                                        <div class="layout-row" :style="rowStyle(page, row, rowIndex)">
+                                            <template x-for="(column, colIndex) in row.columns" :key="colIndex">
+                                                <div class="layout-cell" 
+                                                     :class="{'empty': !column.path}"
+                                                     :style="cellStyle(page, row, column, colIndex)"
+                                                     @drop="handleDrop($event, page, rowIndex, colIndex)"
+                                                     @dragover.prevent="$el.classList.add('drag-over')"
+                                                     @dragleave="$el.classList.remove('drag-over')"
+                                                     @dragend="$el.classList.remove('drag-over')">
+                                                    <template x-if="!column.path">
+                                                        <span>Drop image</span>
+                                                    </template>
+                                                    <template x-if="column.path">
+                                                        <img :src="imageUrl(column.path)" 
+                                                             :style="imageStyle(page, row, column)"
+                                                             draggable="true"
+                                                             @dragstart="handleDragStart($event, page, rowIndex, colIndex)"
+                                                             @dblclick="openCropModal(page, rowIndex, colIndex)">
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <!-- Horizontal Gutter -->
+                                        <div x-show="rowIndex < page.rows.length - 1" 
+                                             class="gutter gutter-horizontal"
+                                             :style="horizontalGutterStyle(page, rowIndex)"
+                                             @mousedown="startRowResize(page, rowIndex, $event)"></div>
+                                    </div>
+                                </template>
+
+                                <!-- Vertical Gutters -->
+                                <template x-for="(row, rowIndex) in page.rows" :key="'vgutter-' + rowIndex">
+                                    <template x-for="(column, colIndex) in row.columns.slice(0, -1)" :key="'vgutter-' + rowIndex + '-' + colIndex">
+                                        <div class="gutter gutter-vertical"
+                                             :style="verticalGutterStyle(page, rowIndex, colIndex)"
+                                             @mousedown="startColResize(page, rowIndex, colIndex, $event)"></div>
+                                    </template>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Page Numbers -->
+                <div class="page-numbers" x-text="pageNumberText"></div>
+
+                <!-- Layout Menu -->
+                <div x-show="layoutMenu.show" 
+                     class="layout-menu" 
+                     :style="{top: layoutMenu.y + 'px', left: layoutMenu.x + 'px'}"
+                     @click.away="layoutMenu.show = false">
+                    <div class="layout-option" @click="changeLayout('1')">██</div>
+                    <div class="layout-option" @click="changeLayout('2-2')">██▌██▌
+██▌██▌</div>
+                    <div class="layout-option" @click="changeLayout('2-3')">██▌██▌
+█▌█▌█▌</div>
+                    <div class="layout-option" @click="changeLayout('3-2')">█▌█▌█▌
+██▌██▌</div>
+                </div>
+            </div>
+
+            <!-- Image Bank -->
+            <div class="image-bank" @drop="handleDropToBank($event)" @dragover.prevent>
+                <template x-for="image in images" :key="image.path">
+                    <img :src="imageUrl(image.path)" 
+                         class="image-thumb"
+                         :class="{'used': image.used}"
+                         :style="{width: (150 * image.aspectRatio) + 'px'}"
+                         draggable="true"
+                         @dragstart="!image.used && handleDragStartFromBank($event, image)"
+                         @click="image.used && goToImagePage(image)">
+                </template>
+            </div>
+        </div>
+
+        <!-- Crop Modal -->
+        <div class="modal fade" id="cropModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Crop Image</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="cropContainer"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary" @click="saveCrop()">Save Crop</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.6/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <script>
+        const PHOTOBOOK_VERSION = "0.1";
+        const DPI = 96;
+        const PAGE_WIDTH_CM = 35;
+        const PAGE_HEIGHT_CM = 29;
+        const MARGIN_CM = 1;
+        const GUTTER_CM = 0.5;
+
+        function cmToPx(cm) {
+            return cm * DPI / 2.54;
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0;
+                const v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function photobookApp() {
+            return {
+                directoryHandle: null,
+                loading: false,
+                album: null,
+                images: [],
+                currentView: 0,
+                albumScale: 1,
+                layoutMenu: { show: false, x: 0, y: 0, pageIndex: 0 },
+                dragData: null,
+                cropModal: null,
+                croppie: null,
+                cropTarget: null,
+                resizeData: null,
+
+                // Computed properties
+                get currentPages() {
+                    if (this.currentView === 0) {
+                        return [this.album.pages[0]];
+                    } else if (this.currentView * 2 - 1 >= this.album.pages.length) {
+                        return [this.album.pages[this.album.pages.length - 1]];
+                    } else {
+                        const leftIndex = this.currentView * 2 - 1;
+                        const rightIndex = leftIndex + 1;
+                        return [
+                            this.album.pages[leftIndex],
+                            rightIndex < this.album.pages.length ? this.album.pages[rightIndex] : null
+                        ].filter(Boolean);
+                    }
+                },
+
+                get maxView() {
+                    return Math.ceil((this.album.pages.length - 1) / 2);
+                },
+
+                get isSpread() {
+                    return this.currentView > 0 && this.currentView < this.maxView;
+                },
+
+                get isLastPage() {
+                    return this.currentView === this.maxView;
+                },
+
+                get canMoveLeft() {
+                    return this.isSpread && this.currentView > 1;
+                },
+
+                get canMoveRight() {
+                    return this.isSpread && this.currentView < this.maxView - 1;
+                },
+
+                get pageNumberText() {
+                    if (this.currentView === 0) {
+                        return `Page 1 / ${this.album.pages.length}`;
+                    } else if (this.currentView * 2 - 1 >= this.album.pages.length) {
+                        return `Page ${this.album.pages.length} / ${this.album.pages.length}`;
+                    } else {
+                        const left = this.currentView * 2;
+                        const right = left + 1;
+                        return `Pages ${left}-${right} / ${this.album.pages.length}`;
+                    }
+                },
+
+                get pageStyle() {
+                    return {
+                        width: cmToPx(PAGE_WIDTH_CM) + 'px',
+                        height: cmToPx(PAGE_HEIGHT_CM) + 'px'
+                    };
+                },
+
+                get contentStyle() {
+                    const margin = cmToPx(MARGIN_CM);
+                    return {
+                        top: margin + 'px',
+                        left: margin + 'px',
+                        right: margin + 'px',
+                        bottom: margin + 'px',
+                        width: cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM) + 'px',
+                        height: cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM) + 'px'
+                    };
+                },
+
+                async init() {
+                    this.cropModal = new bootstrap.Modal(document.getElementById('cropModal'));
+                    window.addEventListener('resize', () => this.calculateScale());
+                    
+                    // Initialize tooltips
+                    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+                    [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+                },
+
+                async selectFolder() {
+                    try {
+                        this.loading = true;
+                        this.directoryHandle = await window.showDirectoryPicker();
+                        
+                        // Load images
+                        await this.loadImages();
+                        
+                        if (this.images.length === 0) {
+                            alert('No JPEG images found in the selected folder. Please select another folder.');
+                            this.directoryHandle = null;
+                            this.loading = false;
+                            return;
+                        }
+                        
+                        // Load or create album
+                        await this.loadOrCreateAlbum();
+                        
+                        // Calculate scale
+                        this.$nextTick(() => {
+                            this.calculateScale();
+                        });
+                    } catch (error) {
+                        console.error('Error selecting folder:', error);
+                        this.directoryHandle = null;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async loadImages() {
+                    this.images = [];
+                    const imagePromises = [];
+                    
+                    for await (const entry of this.directoryHandle.values()) {
+                        if (entry.kind === 'file' && /\.(jpg|jpeg)$/i.test(entry.name)) {
+                            imagePromises.push(this.loadImageMetadata(entry));
+                        }
+                    }
+                    
+                    const loadedImages = await Promise.all(imagePromises);
+                    
+                    // Sort images by EXIF date, then by filename
+                    this.images = loadedImages.sort((a, b) => {
+                        if (a.date && b.date) {
+                            return a.date - b.date;
+                        } else if (a.date) {
+                            return -1;
+                        } else if (b.date) {
+                            return 1;
+                        } else {
+                            return a.path.localeCompare(b.path);
+                        }
+                    });
+                },
+
+                async loadImageMetadata(fileHandle) {
+                    const file = await fileHandle.getFile();
+                    const url = URL.createObjectURL(file);
+                    
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.onload = () => {
+                            const imageData = {
+                                path: fileHandle.name,
+                                url: url,
+                                width: img.width,
+                                height: img.height,
+                                aspectRatio: img.width / img.height,
+                                used: false,
+                                date: null
+                            };
+                            
+                            // Try to get EXIF data
+                            EXIF.getData(img, function() {
+                                const dateStr = EXIF.getTag(this, 'DateTimeOriginal') || EXIF.getTag(this, 'DateTime');
+                                if (dateStr) {
+                                    // Parse EXIF date format: "2023:12:25 14:30:00"
+                                    const [datePart, timePart] = dateStr.split(' ');
+                                    const [year, month, day] = datePart.split(':');
+                                    const [hour, minute, second] = timePart.split(':');
+                                    imageData.date = new Date(year, month - 1, day, hour, minute, second);
+                                }
+                                resolve(imageData);
+                            });
+                        };
+                        img.src = url;
+                    });
+                },
+
+                async loadOrCreateAlbum() {
+                    try {
+                        const fileHandle = await this.directoryHandle.getFileHandle('album.json');
+                        const file = await fileHandle.getFile();
+                        const text = await file.text();
+                        const data = JSON.parse(text);
+                        
+                        if (data.photobook_version !== PHOTOBOOK_VERSION) {
+                            alert(`Incompatible album version (${data.photobook_version}). Please remove album.json and reload the page.`);
+                            throw new Error('Incompatible version');
+                        }
+                        
+                        this.album = data;
+                        this.updateImageUsage();
+                    } catch (error) {
+                        // Create new album
+                        this.album = {
+                            photobook_version: PHOTOBOOK_VERSION,
+                            pages: [
+                                this.createPage('1'), // First page
+                                this.createPage('2-3'), // Spread 1 left
+                                this.createPage('3-2'), // Spread 1 right
+                                this.createPage('1')  // Last page
+                            ]
+                        };
+                        await this.saveAlbum();
+                    }
+                },
+
+                createPage(layout) {
+                    const page = {
+                        id: generateUUID(),
+                        layout: layout,
+                        rows: []
+                    };
+                    
+                    switch (layout) {
+                        case '1':
+                            page.rows = [{
+                                height_percent: 100,
+                                columns: [{ width_grid: 12 }]
+                            }];
+                            break;
+                        case '2-2':
+                            page.rows = [
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 6 }, { width_grid: 6 }]
+                                },
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 6 }, { width_grid: 6 }]
+                                }
+                            ];
+                            break;
+                        case '2-3':
+                            page.rows = [
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 4 }, { width_grid: 8 }]
+                                },
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }]
+                                }
+                            ];
+                            break;
+                        case '3-2':
+                            page.rows = [
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }]
+                                },
+                                {
+                                    height_percent: 50,
+                                    columns: [{ width_grid: 6 }, { width_grid: 6 }]
+                                }
+                            ];
+                            break;
+                    }
+                    
+                    return page;
+                },
+
+                async saveAlbum() {
+                    try {
+                        const fileHandle = await this.directoryHandle.getFileHandle('album.json', { create: true });
+                        const writable = await fileHandle.createWritable();
+                        await writable.write(JSON.stringify(this.album, null, 2));
+                        await writable.close();
+                    } catch (error) {
+                        console.error('Error saving album:', error);
+                    }
+                },
+
+                updateImageUsage() {
+                    // Reset all images to unused
+                    this.images.forEach(img => img.used = false);
+                    
+                    // Mark used images
+                    this.album.pages.forEach(page => {
+                        page.rows.forEach(row => {
+                            row.columns.forEach(col => {
+                                if (col.path) {
+                                    const img = this.images.find(i => i.path === col.path);
+                                    if (img) img.used = true;
+                                }
+                            });
+                        });
+                    });
+                },
+
+                calculateScale() {
+                    const viewport = document.querySelector('.main-area');
+                    if (!viewport) return;
+                    
+                    const viewportWidth = viewport.clientWidth - 100; // padding
+                    const viewportHeight = viewport.clientHeight - 100;
+                    
+                    const albumWidth = this.currentPages.length * cmToPx(PAGE_WIDTH_CM) + (this.currentPages.length - 1) * 20;
+                    const albumHeight = cmToPx(PAGE_HEIGHT_CM);
+                    
+                    const scaleX = viewportWidth / albumWidth;
+                    const scaleY = viewportHeight / albumHeight;
+                    
+                    this.albumScale = Math.min(scaleX, scaleY, 1);
+                },
+
+                previousPage() {
+                    if (this.currentView > 0) {
+                        this.currentView--;
+                    }
+                },
+
+                nextPage() {
+                    if (this.currentView < this.maxView) {
+                        this.currentView++;
+                    }
+                },
+
+                async addSpread() {
+                    const insertIndex = this.currentView * 2 + 1;
+                    this.album.pages.splice(insertIndex, 0, 
+                        this.createPage('2-2'),
+                        this.createPage('2-2')
+                    );
+                    await this.saveAlbum();
+                    this.currentView++;
+                },
+
+                async deleteSpread() {
+                    if (!this.isSpread) return;
+                    
+                    if (confirm('Are you sure you want to delete this spread?')) {
+                        const leftIndex = this.currentView * 2 - 1;
+                        
+                        // Return images to bank
+                        for (let i = 0; i < 2; i++) {
+                            const page = this.album.pages[leftIndex];
+                            if (page) {
+                                page.rows.forEach(row => {
+                                    row.columns.forEach(col => {
+                                        if (col.path) {
+                                            delete col.path;
+                                            delete col.x;
+                                            delete col.y;
+                                            delete col.width;
+                                            delete col.height;
+                                        }
+                                    });
+                                });
+                            }
+                        }
+                        
+                        this.album.pages.splice(leftIndex, 2);
+                        this.updateImageUsage();
+                        await this.saveAlbum();
+                        
+                        if (this.currentView > this.maxView) {
+                            this.currentView = this.maxView;
+                        }
+                    }
+                },
+
+                async moveSpreadLeft() {
+                    if (!this.canMoveLeft) return;
+                    
+                    const leftIndex = this.currentView * 2 - 1;
+                    const targetIndex = leftIndex - 2;
+                    
+                    const spread = this.album.pages.splice(leftIndex, 2);
+                    this.album.pages.splice(targetIndex, 0, ...spread);
+                    
+                    await this.saveAlbum();
+                    this.currentView--;
+                },
+
+                async moveSpreadRight() {
+                    if (!this.canMoveRight) return;
+                    
+                    const leftIndex = this.currentView * 2 - 1;
+                    const targetIndex = leftIndex + 2;
+                    
+                    const spread = this.album.pages.splice(leftIndex, 2);
+                    this.album.pages.splice(targetIndex, 0, ...spread);
+                    
+                    await this.saveAlbum();
+                    this.currentView++;
+                },
+
+                canChangeLayout(pageIndex) {
+                    const globalIndex = this.currentView === 0 ? 0 : 
+                                      (this.currentView * 2 - 1) + pageIndex;
+                    return globalIndex > 0 && globalIndex < this.album.pages.length - 1;
+                },
+
+                layoutSelectorStyle(pageIndex) {
+                    return pageIndex === 0 ? { top: '10px', left: '10px' } : { top: '10px', right: '10px' };
+                },
+
+                openLayoutMenu(pageIndex, event) {
+                    const rect = event.target.getBoundingClientRect();
+                    this.layoutMenu = {
+                        show: true,
+                        x: rect.left,
+                        y: rect.bottom + 5,
+                        pageIndex: pageIndex
+                    };
+                },
+
+                async changeLayout(newLayout) {
+                    const globalIndex = this.currentView === 0 ? 0 : 
+                                      (this.currentView * 2 - 1) + this.layoutMenu.pageIndex;
+                    const page = this.album.pages[globalIndex];
+                    const oldLayout = page.layout;
+                    
+                    if (oldLayout === newLayout) {
+                        this.layoutMenu.show = false;
+                        return;
+                    }
+                    
+                    // Collect all images from current layout
+                    const images = [];
+                    page.rows.forEach(row => {
+                        row.columns.forEach(col => {
+                            if (col.path) {
+                                images.push({
+                                    path: col.path,
+                                    x: col.x,
+                                    y: col.y,
+                                    width: col.width,
+                                    height: col.height
+                                });
+                            }
+                        });
+                    });
+                    
+                    // Create new page structure
+                    const newPage = this.createPage(newLayout);
+                    page.layout = newLayout;
+                    page.rows = newPage.rows;
+                    
+                    // Redistribute images based on specific rules
+                    let imageIndex = 0;
+                    
+                    if (newLayout === '1') {
+                        // Keep only first image
+                        if (images.length > 0) {
+                            const col = page.rows[0].columns[0];
+                            col.path = images[0].path;
+                            this.autoCrop(page, 0, 0);
+                            imageIndex = 1;
+                        }
+                    } else {
+                        // Fill cells with existing images
+                        page.rows.forEach((row, rowIndex) => {
+                            row.columns.forEach((col, colIndex) => {
+                                if (imageIndex < images.length) {
+                                    col.path = images[imageIndex].path;
+                                    
+                                    // Check if cell dimensions changed
+                                    const needsRecrop = oldLayout === '1' || 
+                                        (oldLayout === '2-2' && newLayout !== '2-2') ||
+                                        (oldLayout === '2-3' && rowIndex === 0 && colIndex > 1) ||
+                                        (oldLayout === '3-2' && rowIndex === 1 && colIndex > 1);
+                                    
+                                    if (needsRecrop) {
+                                        this.autoCrop(page, rowIndex, colIndex);
+                                    } else {
+                                        // Keep existing crop
+                                        col.x = images[imageIndex].x;
+                                        col.y = images[imageIndex].y;
+                                        col.width = images[imageIndex].width;
+                                        col.height = images[imageIndex].height;
+                                    }
+                                    
+                                    imageIndex++;
+                                }
+                            });
+                        });
+                    }
+                    
+                    // Return unused images to bank
+                    for (let i = imageIndex; i < images.length; i++) {
+                        const img = this.images.find(img => img.path === images[i].path);
+                        if (img) img.used = false;
+                    }
+                    
+                    this.updateImageUsage();
+                    await this.saveAlbum();
+                    this.layoutMenu.show = false;
+                },
+
+                rowStyle(page, row, rowIndex) {
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const totalGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const availableHeight = contentHeight - totalGutters;
+                    const height = availableHeight * row.height_percent / 100;
+                    
+                    let top = 0;
+                    for (let i = 0; i < rowIndex; i++) {
+                        top += availableHeight * page.rows[i].height_percent / 100 + cmToPx(GUTTER_CM);
+                    }
+                    
+                    return {
+                        position: 'absolute',
+                        top: top + 'px',
+                        left: '0',
+                        right: '0',
+                        height: height + 'px'
+                    };
+                },
+
+                cellStyle(page, row, column, colIndex) {
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const totalGutters = (row.columns.length - 1) * cmToPx(GUTTER_CM);
+                    const availableWidth = contentWidth - totalGutters;
+                    const gridUnit = availableWidth / 12;
+                    const width = gridUnit * column.width_grid;
+                    
+                    let left = 0;
+                    for (let i = 0; i < colIndex; i++) {
+                        left += gridUnit * row.columns[i].width_grid + cmToPx(GUTTER_CM);
+                    }
+                    
+                    return {
+                        position: 'absolute',
+                        left: left + 'px',
+                        width: width + 'px',
+                        height: '100%'
+                    };
+                },
+
+                imageStyle(page, row, column) {
+                    if (!column.path || !column.width) return {};
+                    
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const rowGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const colGutters = (row.columns.length - 1) * cmToPx(GUTTER_CM);
+                    
+                    const availableHeight = contentHeight - rowGutters;
+                    const availableWidth = contentWidth - colGutters;
+                    
+                    const cellHeight = availableHeight * row.height_percent / 100;
+                    const cellWidth = availableWidth * column.width_grid / 12;
+                    
+                    const scale = Math.max(
+                        cellWidth / column.width,
+                        cellHeight / column.height
+                    );
+                    
+                    const scaledWidth = column.width * scale;
+                    const scaledHeight = column.height * scale;
+                    
+                    const translateX = -column.x * scale;
+                    const translateY = -column.y * scale;
+                    
+                    return {
+                        width: scaledWidth + 'px',
+                        height: scaledHeight + 'px',
+                        transform: `translate(${translateX}px, ${translateY}px)`
+                    };
+                },
+
+                horizontalGutterStyle(page, rowIndex) {
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const totalGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const availableHeight = contentHeight - totalGutters;
+                    
+                    let top = 0;
+                    for (let i = 0; i <= rowIndex; i++) {
+                        top += availableHeight * page.rows[i].height_percent / 100;
+                        if (i < rowIndex) {
+                            top += cmToPx(GUTTER_CM);
+                        }
+                    }
+                    
+                    return {
+                        top: (top + cmToPx(GUTTER_CM) / 2) + 'px'
+                    };
+                },
+
+                verticalGutterStyle(page, rowIndex, colIndex) {
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const row = page.rows[rowIndex];
+                    
+                    const rowGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const colGutters = (row.columns.length - 1) * cmToPx(GUTTER_CM);
+                    const availableWidth = contentWidth - colGutters;
+                    const availableHeight = contentHeight - rowGutters;
+                    
+                    const gridUnit = availableWidth / 12;
+                    
+                    let left = 0;
+                    for (let i = 0; i <= colIndex; i++) {
+                        left += gridUnit * row.columns[i].width_grid;
+                        if (i < colIndex) {
+                            left += cmToPx(GUTTER_CM);
+                        }
+                    }
+                    
+                    let top = 0;
+                    for (let i = 0; i < rowIndex; i++) {
+                        top += availableHeight * page.rows[i].height_percent / 100 + cmToPx(GUTTER_CM);
+                    }
+                    
+                    const height = availableHeight * row.height_percent / 100;
+                    
+                    return {
+                        left: (left + cmToPx(GUTTER_CM) / 2) + 'px',
+                        top: top + 'px',
+                        height: height + 'px'
+                    };
+                },
+
+                startRowResize(page, rowIndex, event) {
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const totalGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const availableHeight = contentHeight - totalGutters;
+                    
+                    this.resizeData = {
+                        type: 'row',
+                        page: page,
+                        index: rowIndex,
+                        startY: event.clientY,
+                        startPercent1: page.rows[rowIndex].height_percent,
+                        startPercent2: page.rows[rowIndex + 1].height_percent,
+                        availableHeight: availableHeight
+                    };
+                    
+                    document.addEventListener('mousemove', this.handleResize);
+                    document.addEventListener('mouseup', this.endResize);
+                    event.preventDefault();
+                },
+
+                startColResize(page, rowIndex, colIndex, event) {
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const row = page.rows[rowIndex];
+                    const totalGutters = (row.columns.length - 1) * cmToPx(GUTTER_CM);
+                    const availableWidth = contentWidth - totalGutters;
+                    
+                    this.resizeData = {
+                        type: 'col',
+                        page: page,
+                        rowIndex: rowIndex,
+                        colIndex: colIndex,
+                        startX: event.clientX,
+                        startGrid1: row.columns[colIndex].width_grid,
+                        startGrid2: row.columns[colIndex + 1].width_grid,
+                        availableWidth: availableWidth
+                    };
+                    
+                    document.addEventListener('mousemove', this.handleResize);
+                    document.addEventListener('mouseup', this.endResize);
+                    event.preventDefault();
+                },
+
+                handleResize(event) {
+                    if (!this.resizeData) return;
+                    
+                    if (this.resizeData.type === 'row') {
+                        const deltaY = event.clientY - this.resizeData.startY;
+                        const unscaledDelta = deltaY / this.albumScale;
+                        const deltaPercent = (unscaledDelta / this.resizeData.availableHeight) * 100;
+                        
+                        const newPercent1 = Math.max(10, Math.min(90, 
+                            this.resizeData.startPercent1 + deltaPercent));
+                        const newPercent2 = this.resizeData.startPercent1 + 
+                            this.resizeData.startPercent2 - newPercent1;
+                        
+                        this.resizeData.page.rows[this.resizeData.index].height_percent = newPercent1;
+                        this.resizeData.page.rows[this.resizeData.index + 1].height_percent = newPercent2;
+                    } else {
+                        const deltaX = event.clientX - this.resizeData.startX;
+                        const unscaledDelta = deltaX / this.albumScale;
+                        const gridUnit = this.resizeData.availableWidth / 12;
+                        const deltaGrid = Math.round(unscaledDelta / gridUnit);
+                        
+                        const newGrid1 = Math.max(1, Math.min(11, 
+                            this.resizeData.startGrid1 + deltaGrid));
+                        const newGrid2 = this.resizeData.startGrid1 + 
+                            this.resizeData.startGrid2 - newGrid1;
+                        
+                        if (newGrid2 >= 1 && newGrid2 <= 11) {
+                            const row = this.resizeData.page.rows[this.resizeData.rowIndex];
+                            row.columns[this.resizeData.colIndex].width_grid = newGrid1;
+                            row.columns[this.resizeData.colIndex + 1].width_grid = newGrid2;
+                        }
+                    }
+                },
+
+                async endResize() {
+                    document.removeEventListener('mousemove', this.handleResize);
+                    document.removeEventListener('mouseup', this.endResize);
+                    
+                    if (!this.resizeData) return;
+                    
+                    // Auto-crop affected images
+                    if (this.resizeData.type === 'row') {
+                        const page = this.resizeData.page;
+                        const rows = [this.resizeData.index, this.resizeData.index + 1];
+                        
+                        rows.forEach(rowIndex => {
+                            page.rows[rowIndex].columns.forEach((col, colIndex) => {
+                                if (col.path) {
+                                    this.autoCrop(page, rowIndex, colIndex);
+                                }
+                            });
+                        });
+                    } else {
+                        const page = this.resizeData.page;
+                        const row = page.rows[this.resizeData.rowIndex];
+                        const cols = [this.resizeData.colIndex, this.resizeData.colIndex + 1];
+                        
+                        cols.forEach(colIndex => {
+                            if (row.columns[colIndex].path) {
+                                this.autoCrop(page, this.resizeData.rowIndex, colIndex);
+                            }
+                        });
+                    }
+                    
+                    await this.saveAlbum();
+                    this.resizeData = null;
+                },
+
+                handleDragStart(event, page, rowIndex, colIndex) {
+                    this.dragData = {
+                        source: 'cell',
+                        page: page,
+                        rowIndex: rowIndex,
+                        colIndex: colIndex
+                    };
+                    event.dataTransfer.effectAllowed = 'move';
+                },
+
+                handleDragStartFromBank(event, image) {
+                    if (image.used) return;
+                    
+                    this.dragData = {
+                        source: 'bank',
+                        image: image
+                    };
+                    event.dataTransfer.effectAllowed = 'copy';
+                },
+
+                async handleDrop(event, page, rowIndex, colIndex) {
+                    event.preventDefault();
+                    event.target.classList.remove('drag-over');
+                    
+                    if (!this.dragData) return;
+                    
+                    const targetCol = page.rows[rowIndex].columns[colIndex];
+                    
+                    if (this.dragData.source === 'bank') {
+                        // Drop from bank
+                        if (targetCol.path) {
+                            // Return existing image to bank
+                            const img = this.images.find(i => i.path === targetCol.path);
+                            if (img) img.used = false;
+                        }
+                        
+                        targetCol.path = this.dragData.image.path;
+                        this.dragData.image.used = true;
+                        this.autoCrop(page, rowIndex, colIndex);
+                        
+                    } else if (this.dragData.source === 'cell') {
+                        // Swap cells
+                        const sourceCol = this.dragData.page.rows[this.dragData.rowIndex]
+                            .columns[this.dragData.colIndex];
+                        
+                        // Swap paths
+                        const tempPath = targetCol.path;
+                        targetCol.path = sourceCol.path;
+                        sourceCol.path = tempPath;
+                        
+                        // Auto-crop both cells if they have images
+                        if (targetCol.path) {
+                            this.autoCrop(page, rowIndex, colIndex);
+                        }
+                        if (sourceCol.path) {
+                            this.autoCrop(this.dragData.page, this.dragData.rowIndex, this.dragData.colIndex);
+                        }
+                    }
+                    
+                    this.updateImageUsage();
+                    await this.saveAlbum();
+                    this.dragData = null;
+                },
+
+                async handleDropToBank(event) {
+                    event.preventDefault();
+                    
+                    if (!this.dragData || this.dragData.source !== 'cell') return;
+                    
+                    const sourceCol = this.dragData.page.rows[this.dragData.rowIndex]
+                        .columns[this.dragData.colIndex];
+                    
+                    if (sourceCol.path) {
+                        const img = this.images.find(i => i.path === sourceCol.path);
+                        if (img) img.used = false;
+                        
+                        delete sourceCol.path;
+                        delete sourceCol.x;
+                        delete sourceCol.y;
+                        delete sourceCol.width;
+                        delete sourceCol.height;
+                        
+                        this.updateImageUsage();
+                        await this.saveAlbum();
+                    }
+                    
+                    this.dragData = null;
+                },
+
+                autoCrop(page, rowIndex, colIndex) {
+                    const column = page.rows[rowIndex].columns[colIndex];
+                    if (!column.path) return;
+                    
+                    const image = this.images.find(img => img.path === column.path);
+                    if (!image) return;
+                    
+                    // Calculate cell dimensions
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const rowGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const colGutters = (page.rows[rowIndex].columns.length - 1) * cmToPx(GUTTER_CM);
+                    
+                    const availableHeight = contentHeight - rowGutters;
+                    const availableWidth = contentWidth - colGutters;
+                    
+                    const cellHeight = availableHeight * page.rows[rowIndex].height_percent / 100;
+                    const cellWidth = availableWidth * column.width_grid / 12;
+                    const cellAspect = cellWidth / cellHeight;
+                    
+                    // Calculate crop to fill cell
+                    const imageAspect = image.width / image.height;
+                    
+                    if (imageAspect > cellAspect) {
+                        // Image is wider - crop width
+                        column.height = image.height;
+                        column.width = image.height * cellAspect;
+                        column.x = (image.width - column.width) / 2;
+                        column.y = 0;
+                    } else {
+                        // Image is taller - crop height
+                        column.width = image.width;
+                        column.height = image.width / cellAspect;
+                        column.x = 0;
+                        column.y = (image.height - column.height) / 2;
+                    }
+                },
+
+                openCropModal(page, rowIndex, colIndex) {
+                    const column = page.rows[rowIndex].columns[colIndex];
+                    if (!column.path) return;
+                    
+                    this.cropTarget = { page, rowIndex, colIndex };
+                    
+                    // Calculate cell aspect ratio
+                    const contentWidth = cmToPx(PAGE_WIDTH_CM - 2 * MARGIN_CM);
+                    const contentHeight = cmToPx(PAGE_HEIGHT_CM - 2 * MARGIN_CM);
+                    const rowGutters = (page.rows.length - 1) * cmToPx(GUTTER_CM);
+                    const colGutters = (page.rows[rowIndex].columns.length - 1) * cmToPx(GUTTER_CM);
+                    
+                    const availableHeight = contentHeight - rowGutters;
+                    const availableWidth = contentWidth - colGutters;
+                    
+                    const cellHeight = availableHeight * page.rows[rowIndex].height_percent / 100;
+                    const cellWidth = availableWidth * column.width_grid / 12;
+                    
+                    // Show modal
+                    this.cropModal.show();
+                    
+                    // Initialize Croppie
+                    setTimeout(() => {
+                        const container = document.getElementById('cropContainer');
+                        container.innerHTML = '';
+                        
+                        this.croppie = new Croppie(container, {
+                            viewport: {
+                                width: 400,
+                                height: 400 * cellHeight / cellWidth,
+                                type: 'square'
+                            },
+                            boundary: {
+                                width: 500,
+                                height: 500
+                            },
+                            showZoomer: true,
+                            enableOrientation: false
+                        });
+                        
+                        // Load image with current crop
+                        this.croppie.bind({
+                            url: this.imageUrl(column.path),
+                            points: [
+                                column.x,
+                                column.y,
+                                column.x + column.width,
+                                column.y + column.height
+                            ]
+                        });
+                    }, 100);
+                },
+
+                async saveCrop() {
+                    if (!this.croppie || !this.cropTarget) return;
+                    
+                    const result = await this.croppie.get();
+                    const column = this.cropTarget.page.rows[this.cropTarget.rowIndex]
+                        .columns[this.cropTarget.colIndex];
+                    
+                    column.x = result.points[0];
+                    column.y = result.points[1];
+                    column.width = result.points[2] - result.points[0];
+                    column.height = result.points[3] - result.points[1];
+                    
+                    await this.saveAlbum();
+                    
+                    this.cropModal.hide();
+                    this.croppie.destroy();
+                    this.croppie = null;
+                    this.cropTarget = null;
+                },
+
+                goToImagePage(image) {
+                    // Find which page contains this image
+                    for (let i = 0; i < this.album.pages.length; i++) {
+                        const page = this.album.pages[i];
+                        let found = false;
+                        
+                        page.rows.forEach(row => {
+                            row.columns.forEach(col => {
+                                if (col.path === image.path) {
+                                    found = true;
+                                }
+                            });
+                        });
+                        
+                        if (found) {
+                            // Navigate to correct view
+                            if (i === 0) {
+                                this.currentView = 0;
+                            } else if (i === this.album.pages.length - 1) {
+                                this.currentView = this.maxView;
+                            } else {
+                                this.currentView = Math.ceil(i / 2);
+                            }
+                            break;
+                        }
+                    }
+                },
+
+                imageUrl(path) {
+                    const image = this.images.find(img => img.path === path);
+                    return image ? image.url : '';
+                }
+            };
+        }
+    </script>
+</body>
+</html>

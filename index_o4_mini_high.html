@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Family Album Photobook Creator</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.9.1/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css">
+  <style>
+    :root {
+      --page-width: 35cm;
+      --page-height: 29cm;
+      --page-margin: 1cm;
+      --gutter: 0.5cm;
+    }
+    body, html {
+      height: 100%;
+      margin: 0;
+    }
+    #app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+    #main {
+      flex: 1;
+      position: relative;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: auto;
+      background: #f0f0f0;
+    }
+    .page {
+      background: white;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+      position: relative;
+      transform-origin: top left;
+    }
+    .page-content {
+      position: relative;
+      box-sizing: border-box;
+      padding: var(--page-margin);
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+    .row-wrapper {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .row-container {
+      display: flex;
+      position: relative;
+    }
+    .cell {
+      position: relative;
+      overflow: hidden;
+      background: #e0e0e0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .cell img {
+      position: absolute;
+    }
+    .cell.empty {
+      border: 2px dashed #aaa;
+      cursor: pointer;
+    }
+    .cell.empty::before {
+      content: "Drop image";
+      color: #aaa;
+    }
+    .gutter-row {
+      background: transparent;
+      cursor: row-resize;
+    }
+    .gutter-col {
+      background: transparent;
+      cursor: col-resize;
+    }
+    #image-bank {
+      height: 170px;
+      background: #333;
+      overflow-x: auto;
+      display: flex;
+      align-items: center;
+      padding: 10px;
+    }
+    #image-bank img {
+      height: 150px;
+      margin-right: 10px;
+      transition: transform 0.2s;
+    }
+    #image-bank img:hover {
+      transform: scale(1.05);
+    }
+    #image-bank img.used {
+      filter: grayscale(100%);
+      cursor: pointer;
+    }
+    #folder-select {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    .floating-buttons {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 10;
+    }
+    .floating-buttons .btn {
+      margin-left: 5px;
+    }
+    .layout-menu {
+      position: absolute;
+      background: white;
+      border: 1px solid #ccc;
+      z-index: 20;
+      white-space: pre;
+    }
+    .layout-option {
+      padding: 5px 10px;
+      cursor: pointer;
+      white-space: pre;
+      font-family: monospace;
+    }
+    .layout-option:hover {
+      background: #f0f0f0;
+    }
+    .page-number {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255,255,255,0.7);
+      padding: 2px 5px;
+      border-radius: 3px;
+      font-size: 14px;
+    }
+    .icon-layout {
+      cursor: pointer;
+      color: #555;
+    }
+    /* Hide layout menu by default; shown via Alpine x-show */
+    .layout-menu[style*="display: none"] {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div id="app" x-data="albumApp()" x-init="init()">
+    <!-- Folder selection button -->
+    <button id="folder-select" class="btn btn-primary" x-show="!directoryHandle" @click="selectFolder()">Select Image Folder</button>
+    <!-- Main UI -->
+    <div x-show="directoryHandle" class="w-100 h-100 d-flex flex-column">
+      <!-- Floating buttons -->
+      <div class="floating-buttons btn-group" role="group">
+        <!-- Navigation -->
+        <button class="btn btn-secondary" :disabled="currentViewStartIndex === 0" @click="prevView" data-bs-toggle="tooltip" title="Previous"><i class="bi bi-arrow-left"></i></button>
+        <button class="btn btn-secondary" :disabled="currentViewEndIndex >= pages.length - 1" @click="nextView" data-bs-toggle="tooltip" title="Next"><i class="bi bi-arrow-right"></i></button>
+        <!-- Page Actions -->
+        <button class="btn btn-success" :disabled="!canAddSpread" @click="addSpread" data-bs-toggle="tooltip" title="Add Spread"><i class="bi bi-plus"></i></button>
+        <button class="btn btn-danger" :disabled="!isCurrentSpread" @click="deleteSpread" data-bs-toggle="tooltip" title="Delete Spread"><i class="bi bi-trash"></i></button>
+        <div class="btn-group ms-2">
+          <button class="btn btn-secondary dropdown-toggle" :disabled="!isCurrentSpread" data-bs-toggle="dropdown" data-bs-auto-close="outside" title="Move Spread"><i class="bi bi-arrow-left-right"></i></button>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" :class="{disabled: !canMoveLeft}" @click.prevent="moveSpreadLeft"><i class="bi bi-arrow-bar-left"></i> Move Left</a></li>
+            <li><a class="dropdown-item" :class="{disabled: !canMoveRight}" @click.prevent="moveSpreadRight"><i class="bi bi-arrow-bar-right"></i> Move Right</a></li>
+          </ul>
+        </div>
+      </div>
+      <!-- Main preview -->
+      <div id="main">
+        <!-- Loading spinner -->
+        <template x-if="loading">
+          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+        </template>
+        <!-- Preview area -->
+        <template x-if="!loading">
+          <div x-ref="preview" class="position-relative w-100 h-100 overflow-auto">
+            <!-- Single page view -->
+            <template x-if="isSingleView">
+              <div class="position-relative">
+                <div class="page" x-ref="pageRef" :style="pageStyle(pages[currentViewStartIndex])">
+                  <div class="page-content" :style="pageContentStyle">
+                    <template x-for="(row, rowIndex) in pages[currentViewStartIndex].rows" :key="rowIndex">
+                      <div class="row-wrapper" :style="rowWrapperStyle(row, pages[currentViewStartIndex].rows.length, rowIndex)">
+                        <template x-if="rowIndex > 0">
+                          <div class="gutter-row" :style="gutterRowStyle" @mousedown="startRowResize($event, pages[currentViewStartIndex], rowIndex - 1)"></div>
+                        </template>
+                        <div class="row-container" :style="rowStyle(row)">
+                          <template x-for="(col, colIndex) in row.columns" :key="colIndex">
+                            <div class="cell" :class="{'empty': !col.path}" :style="colStyle(col)" @dragover.prevent @drop="handleDrop($event, pages[currentViewStartIndex], rowIndex, colIndex)" @dblclick="openCropModal(pages[currentViewStartIndex], rowIndex, colIndex)" :ref="'cell-' + pages[currentViewStartIndex].id + '-' + rowIndex + '-' + colIndex">
+                              <template x-if="col.path">
+                                <img :src="col.url" @mousedown="startCellDrag($event, pages[currentViewStartIndex], rowIndex, colIndex)">
+                              </template>
+                              <template x-if="colIndex > 0">
+                                <div class="gutter-col" :style="gutterColStyle" @mousedown="startColResize($event, pages[currentViewStartIndex], rowIndex, colIndex - 1)"></div>
+                              </template>
+                            </div>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                    <!-- Layout menu for single page -->
+                    <div class="layout-menu" x-show="showLayoutMenu[pages[currentViewStartIndex].id]" @click.outside="showLayoutMenu[pages[currentViewStartIndex].id] = false" :style="layoutMenuStyle(pages[currentViewStartIndex].id)">
+                      <template x-for="layoutOption in layoutOptions" :key="layoutOption.name">
+                        <div class="layout-option" @click="changeLayout(pages[currentViewStartIndex], layoutOption.name)">{{ layoutOption.symbol }}</div>
+                      </template>
+                    </div>
+                    <!-- Layout icon -->
+                    <div class="icon-layout" @click="toggleLayoutMenu($event, pages[currentViewStartIndex])" style="position:absolute; top:10px; right:10px;"><i class="bi bi-grid-fill"></i></div>
+                  </div>
+                </div>
+                <!-- Page number -->
+                <div class="page-number">Page {{ currentViewStartIndex + 1 }} / {{ pages.length }}</div>
+              </div>
+            </template>
+            <!-- Spread view -->
+            <template x-if="!isSingleView">
+              <div class="position-relative">
+                <div class="d-flex justify-content-center">
+                  <template x-for="idx in [currentViewStartIndex, currentViewEndIndex]" :key="idx">
+                    <div class="page mx-2" x-ref="pageRef" :style="pageStyle(pages[idx])">
+                      <div class="page-content" :style="pageContentStyle">
+                        <template x-for="(row, rowIndex) in pages[idx].rows" :key="rowIndex">
+                          <div class="row-wrapper" :style="rowWrapperStyle(row, pages[idx].rows.length, rowIndex)">
+                            <template x-if="rowIndex > 0">
+                              <div class="gutter-row" :style="gutterRowStyle" @mousedown="startRowResize($event, pages[idx], rowIndex - 1)"></div>
+                            </template>
+                            <div class="row-container" :style="rowStyle(row)">
+                              <template x-for="(col, colIndex) in row.columns" :key="colIndex">
+                                <div class="cell" :class="{'empty': !col.path}" :style="colStyle(col)" @dragover.prevent @drop="handleDrop($event, pages[idx], rowIndex, colIndex)" @dblclick="openCropModal(pages[idx], rowIndex, colIndex)" :ref="'cell-' + pages[idx].id + '-' + rowIndex + '-' + colIndex">
+                                  <template x-if="col.path">
+                                    <img :src="col.url" @mousedown="startCellDrag($event, pages[idx], rowIndex, colIndex)">
+                                  </template>
+                                  <template x-if="colIndex > 0">
+                                    <div class="gutter-col" :style="gutterColStyle" @mousedown="startColResize($event, pages[idx], rowIndex, colIndex - 1)"></div>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </div>
+                        </template>
+                        <!-- Layout menu for each page in spread -->
+                        <div class="layout-menu" x-show="showLayoutMenu[pages[idx].id]" @click.outside="showLayoutMenu[pages[idx].id] = false" :style="layoutMenuStyle(pages[idx].id)">
+                          <template x-for="layoutOption in layoutOptions" :key="layoutOption.name">
+                            <div class="layout-option" @click="changeLayout(pages[idx], layoutOption.name)">{{ layoutOption.symbol }}</div>
+                          </template>
+                        </div>
+                        <!-- Layout icon on each page -->
+                        <div class="icon-layout" @click="toggleLayoutMenu($event, pages[idx])" :style="iconLayoutPosition(idx)"><i class="bi bi-grid-fill"></i></div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+                <!-- Spread page number -->
+                <div class="page-number">Pages {{ currentViewStartIndex + 1 }}-{{ currentViewEndIndex + 1 }} / {{ pages.length }}</div>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <!-- Image bank -->
+      <div id="image-bank" @dragover.prevent @drop="handleBankDrop($event)">
+        <template x-for="(img, i) in imagesBank" :key="i">
+          <img :src="img.url" :class="{ 'used': img.used }" :draggable="!img.used" @dragstart="startBankDrag($event, img)" @click="scrollToImage(img)" />
+        </template>
+      </div>
+    </div>
+    <!-- Crop Modal -->
+    <div class="modal fade" id="cropModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Crop Image</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div id="croppieContainer"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" @click="confirmCrop()">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js" defer></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js" defer></script>
+  <script>
+    function albumApp() {
+      return {
+        directoryHandle: null,
+        imagesBank: [],
+        pages: [],
+        currentViewStartIndex: 0,
+        loading: false,
+        scale: 1,
+        resizing: false,
+        resizingType: '',
+        resizeData: {},
+        cropping: { page: null, rowIdx: null, colIdx: null, instance: null },
+        showLayoutMenu: {},
+        layoutOptions: [
+          { name: '1', symbol: '██' },
+          { name: '2-2', symbol: '██▌██▌\n██▌██▌' },
+          { name: '2-3', symbol: '██▌██▌\n█▌█▌█▌' },
+          { name: '3-2', symbol: '█▌█▌█▌\n██▌██▌' }
+        ],
+        init() {
+          // Initialize Bootstrap tooltips
+          const tooltipList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+          tooltipList.forEach(el => new bootstrap.Tooltip(el));
+          window.addEventListener('resize', () => this.updateScale());
+        },
+        async selectFolder() {
+          try {
+            this.directoryHandle = await window.showDirectoryPicker();
+            await this.loadImages();
+            await this.loadAlbum();
+            this.$nextTick(() => this.updateScale());
+          } catch (e) {
+            console.error(e);
+          }
+        },
+        async loadImages() {
+          const files = [];
+          for await (const entry of this.directoryHandle.values()) {
+            if (entry.kind === 'file' && /\.(jpe?g)$/i.test(entry.name)) {
+              const fileHandle = entry;
+              const file = await fileHandle.getFile();
+              const url = URL.createObjectURL(file);
+              let date = null;
+              await new Promise(resolve => {
+                const img = new Image();
+                img.src = url;
+                img.onload = () => {
+                  try {
+                    EXIF.getData(img, function () {
+                      const exifDate = EXIF.getTag(this, 'DateTimeOriginal');
+                      if (exifDate) {
+                        const [d, t] = exifDate.split(' ');
+                        const [y, m, day] = d.split(':');
+                        const [hh, mm, ss] = t.split(':');
+                        date = new Date(y, m - 1, day, hh, mm, ss);
+                      }
+                      resolve();
+                    });
+                  } catch {
+                    resolve();
+                  }
+                };
+                img.onerror = () => resolve();
+              });
+              files.push({ name: entry.name, handle: entry, url, date, used: false });
+            }
+          }
+          files.sort((a, b) => {
+            if (a.date && b.date) return a.date - b.date;
+            if (a.date && !b.date) return -1;
+            if (!a.date && b.date) return 1;
+            return a.name.localeCompare(b.name);
+          });
+          this.imagesBank = files;
+        },
+        async loadAlbum() {
+          this.loading = true;
+          try {
+            const handle = await this.directoryHandle.getFileHandle('album.json', { create: false });
+            const file = await handle.getFile();
+            const text = await file.text();
+            const data = JSON.parse(text);
+            if (data.photobook_version !== '0.1') {
+              alert('Incompatible album.json version. Please remove or update.');
+              this.loading = false;
+              return;
+            }
+            this.pages = data.pages.map(page => {
+              page.rows.forEach(row => {
+                row.columns.forEach(col => {
+                  if (col.path) {
+                    const imgObj = this.imagesBank.find(i => i.name === col.path);
+                    if (imgObj) {
+                      imgObj.used = true;
+                      col.url = imgObj.url;
+                    }
+                  }
+                });
+              });
+              this.showLayoutMenu[page.id] = false;
+              return page;
+            });
+          } catch {
+            await this.createDefaultAlbum();
+            await this.saveAlbum();
+          }
+          this.loading = false;
+        },
+        async createDefaultAlbum() {
+          this.pages = [];
+          // First single page
+          const firstPage = {
+            id: crypto.randomUUID(),
+            layout: '1',
+            rows: [{ height_percent: 100, columns: [{ width_grid: 12 }] }]
+          };
+          this.showLayoutMenu[firstPage.id] = false;
+          this.pages.push(firstPage);
+          // One spread: 2-3 then 3-2
+          const page2 = {
+            id: crypto.randomUUID(),
+            layout: '2-3',
+            rows: [
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 8 }] },
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] }
+            ]
+          };
+          const page3 = {
+            id: crypto.randomUUID(),
+            layout: '3-2',
+            rows: [
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] },
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+            ]
+          };
+          this.showLayoutMenu[page2.id] = false;
+          this.showLayoutMenu[page3.id] = false;
+          this.pages.push(page2);
+          this.pages.push(page3);
+          // Last single page
+          const lastPage = {
+            id: crypto.randomUUID(),
+            layout: '1',
+            rows: [{ height_percent: 100, columns: [{ width_grid: 12 }] }]
+          };
+          this.showLayoutMenu[lastPage.id] = false;
+          this.pages.push(lastPage);
+        },
+        async saveAlbum() {
+          const data = {
+            photobook_version: '0.1',
+            pages: this.pages.map(p => ({
+              id: p.id,
+              layout: p.layout,
+              rows: p.rows.map(row => ({
+                height_percent: row.height_percent,
+                columns: row.columns.map(col => ({
+                  width_grid: col.width_grid,
+                  path: col.path,
+                  x: col.x,
+                  y: col.y,
+                  width: col.width,
+                  height: col.height
+                }))
+              }))
+            }))
+          };
+          const fileHandle = await this.directoryHandle.getFileHandle('album.json', { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(JSON.stringify(data, null, 2));
+          await writable.close();
+        },
+        updateScale() {
+          this.$nextTick(() => {
+            const preview = this.$refs.preview;
+            if (!preview) return;
+            const pageEl = this.$refs.pageRef;
+            if (!pageEl) return;
+            const previewRect = preview.getBoundingClientRect();
+            const pageRect = pageEl.getBoundingClientRect();
+            const scaleX = previewRect.width / pageRect.width;
+            const scaleY = previewRect.height / pageRect.height;
+            this.scale = Math.min(scaleX, scaleY, 1);
+            pageEl.style.transform = `scale(${this.scale})`;
+          });
+        },
+        pageStyle(page) {
+          return {
+            width: 'var(--page-width)',
+            height: 'var(--page-height)',
+            transform: `scale(${this.scale})`
+          };
+        },
+        get pageContentStyle() {
+          const w = `calc(var(--page-width) - 2 * var(--page-margin))`;
+          const h = `calc(var(--page-height) - 2 * var(--page-margin))`;
+          return { width: w, height: h };
+        },
+        rowWrapperStyle(row) {
+          return { flexGrow: row.height_percent, display: 'flex', flexDirection: 'column' };
+        },
+        gutterRowStyle() {
+          return { height: 'var(--gutter)' };
+        },
+        rowStyle() {
+          return { display: 'flex', flex: 1 };
+        },
+        colStyle(col) {
+          return { flexGrow: col.width_grid, position: 'relative' };
+        },
+        gutterColStyle() {
+          return { width: 'var(--gutter)' };
+        },
+        get isSingleView() {
+          return this.currentViewStartIndex === 0 || this.currentViewStartIndex === this.pages.length - 1;
+        },
+        get currentViewEndIndex() {
+          return this.isSingleView ? this.currentViewStartIndex : this.currentViewStartIndex + 1;
+        },
+        prevView() {
+          if (this.currentViewStartIndex === 0) return;
+          if (this.currentViewStartIndex === 1) this.currentViewStartIndex = 0;
+          else this.currentViewStartIndex -= 2;
+          this.$nextTick(() => this.updateScale());
+        },
+        nextView() {
+          if (this.currentViewStartIndex === 0) this.currentViewStartIndex = 1;
+          else if (this.currentViewEndIndex < this.pages.length - 1) this.currentViewStartIndex += 2;
+          this.$nextTick(() => this.updateScale());
+        },
+        get canAddSpread() {
+          return this.currentViewStartIndex !== this.pages.length - 1;
+        },
+        get isCurrentSpread() {
+          return !this.isSingleView;
+        },
+        get canMoveLeft() {
+          return this.currentViewStartIndex > 1;
+        },
+        get canMoveRight() {
+          return this.currentViewEndIndex < this.pages.length - 2;
+        },
+        addSpread() {
+          let insertIndex;
+          if (this.isSingleView && this.currentViewStartIndex === 0) {
+            insertIndex = 1;
+          } else if (this.isSingleView) {
+            return;
+          } else {
+            insertIndex = this.currentViewStartIndex + 2;
+          }
+          const newPage1 = {
+            id: crypto.randomUUID(),
+            layout: '2-2',
+            rows: [
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] },
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+            ]
+          };
+          const newPage2 = {
+            id: crypto.randomUUID(),
+            layout: '2-2',
+            rows: [
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] },
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+            ]
+          };
+          this.showLayoutMenu[newPage1.id] = false;
+          this.showLayoutMenu[newPage2.id] = false;
+          this.pages.splice(insertIndex, 0, newPage1, newPage2);
+          this.currentViewStartIndex = insertIndex;
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        deleteSpread() {
+          if (!this.isCurrentSpread) return;
+          this.pages.splice(this.currentViewStartIndex, 2);
+          if (this.currentViewStartIndex >= this.pages.length) {
+            this.currentViewStartIndex = this.pages.length - 1;
+          }
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        moveSpreadLeft() {
+          if (!this.canMoveLeft) return;
+          const idx = this.currentViewStartIndex;
+          // swap [idx, idx+1] with [idx-2, idx-1]
+          const a = this.pages[idx - 2],
+                b = this.pages[idx - 1],
+                c = this.pages[idx],
+                d = this.pages[idx + 1];
+          this.pages[idx - 2] = c;
+          this.pages[idx - 1] = d;
+          this.pages[idx] = a;
+          this.pages[idx + 1] = b;
+          this.currentViewStartIndex -= 2;
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        moveSpreadRight() {
+          if (!this.canMoveRight) return;
+          const idx = this.currentViewStartIndex;
+          // swap [idx, idx+1] with [idx+2, idx+3]
+          const a = this.pages[idx],
+                b = this.pages[idx + 1],
+                c = this.pages[idx + 2],
+                d = this.pages[idx + 3];
+          this.pages[idx] = c;
+          this.pages[idx + 1] = d;
+          this.pages[idx + 2] = a;
+          this.pages[idx + 3] = b;
+          this.currentViewStartIndex += 2;
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        iconLayoutPosition(idx) {
+          return idx === this.currentViewStartIndex
+            ? 'position:absolute; top:10px; right:10px;'
+            : 'position:absolute; top:10px; left:10px;';
+        },
+        toggleLayoutMenu(event, page) {
+          this.showLayoutMenu[page.id] = !this.showLayoutMenu[page.id];
+          event.stopPropagation();
+        },
+        layoutMenuStyle() {
+          return { top: '40px', left: '10px' };
+        },
+        changeLayout(page, newLayout) {
+          const oldLayout = page.layout;
+          // Collect existing images
+          const imgs = [];
+          page.rows.forEach((row, rIdx) => {
+            row.columns.forEach((col, cIdx) => {
+              if (col.path) {
+                imgs.push({
+                  path: col.path,
+                  x: col.x,
+                  y: col.y,
+                  width: col.width,
+                  height: col.height
+                });
+              }
+            });
+          });
+          // Clear all columns
+          page.rows.forEach(row => {
+            row.columns.forEach(col => {
+              delete col.path;
+              delete col.x;
+              delete col.y;
+              delete col.width;
+              delete col.height;
+              delete col.url;
+            });
+          });
+          // Set new layout
+          if (newLayout === '1') {
+            page.layout = '1';
+            page.rows = [{ height_percent: 100, columns: [{ width_grid: 12 }] }];
+            this.showLayoutMenu[page.id] = false;
+            if (imgs.length) {
+              const img = imgs[0];
+              const col = page.rows[0].columns[0];
+              col.path = img.path;
+              col.x = img.x;
+              col.y = img.y;
+              col.width = img.width;
+              col.height = img.height;
+              col.url = this.imagesBank.find(i => i.name === img.path).url;
+            }
+          } else if (newLayout === '2-2') {
+            page.layout = '2-2';
+            page.rows = [
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] },
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+            ];
+            const useImgs = imgs.slice(0, 4);
+            useImgs.forEach((img, i) => {
+              const r = Math.floor(i / 2);
+              const c = i % 2;
+              const col = page.rows[r].columns[c];
+              col.path = img.path;
+              col.x = img.x;
+              col.y = img.y;
+              col.width = img.width;
+              col.height = img.height;
+              col.url = this.imagesBank.find(i => i.name === img.path).url;
+            });
+          } else if (newLayout === '2-3') {
+            page.layout = '2-3';
+            page.rows = [
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 8 }] },
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] }
+            ];
+            let useImgs = [];
+            if (oldLayout === '2-2' || oldLayout === '1') {
+              useImgs = imgs.slice(0, 5);
+            } else if (oldLayout === '3-2') {
+              // swap rows logic: top row in 3-2 maps to bottom in 2-3, etc.
+              useImgs = imgs.slice(0, 5);
+            } else {
+              useImgs = imgs.slice(0, 5);
+            }
+            useImgs.forEach((img, i) => {
+              const r = i < 2 ? 0 : 1;
+              const c = i < 2 ? i : i - 2;
+              if (page.rows[r].columns[c]) {
+                const col = page.rows[r].columns[c];
+                col.path = img.path;
+                col.x = img.x;
+                col.y = img.y;
+                col.width = img.width;
+                col.height = img.height;
+                col.url = this.imagesBank.find(i => i.name === img.path).url;
+              }
+            });
+          } else if (newLayout === '3-2') {
+            page.layout = '3-2';
+            page.rows = [
+              { height_percent: 50, columns: [{ width_grid: 4 }, { width_grid: 4 }, { width_grid: 4 }] },
+              { height_percent: 50, columns: [{ width_grid: 6 }, { width_grid: 6 }] }
+            ];
+            let useImgs = [];
+            if (oldLayout === '2-2' || oldLayout === '1') {
+              useImgs = imgs.slice(0, 5);
+            } else if (oldLayout === '2-3') {
+              // swap rows logic
+              useImgs = imgs.slice(0, 5);
+            } else {
+              useImgs = imgs.slice(0, 5);
+            }
+            useImgs.forEach((img, i) => {
+              const r = i < 3 ? 0 : 1;
+              const c = i < 3 ? i : i - 3;
+              if (page.rows[r].columns[c]) {
+                const col = page.rows[r].columns[c];
+                col.path = img.path;
+                col.x = img.x;
+                col.y = img.y;
+                col.width = img.width;
+                col.height = img.height;
+                col.url = this.imagesBank.find(i => i.name === img.path).url;
+              }
+            });
+          }
+          // Reset used flags
+          this.imagesBank.forEach(img => {
+            img.used = this.pages.some(p =>
+              p.rows.some(row =>
+                row.columns.some(col => col.path === img.name)
+              )
+            );
+          });
+          this.showLayoutMenu[page.id] = false;
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        handleDrop(event, page, rowIdx, colIdx) {
+          event.preventDefault();
+          const data = JSON.parse(event.dataTransfer.getData('application/json'));
+          if (data.source === 'bank') {
+            const col = page.rows[rowIdx].columns[colIdx];
+            if (col.path) {
+              const oldImg = this.imagesBank.find(i => i.name === col.path);
+              if (oldImg) oldImg.used = false;
+            }
+            col.path = data.name;
+            const imgObj = this.imagesBank.find(i => i.name === data.name);
+            imgObj.used = true;
+            col.url = imgObj.url;
+            this.autoCrop(page, rowIdx, colIdx);
+          } else if (data.source === 'cell') {
+            const srcPage = this.pages.find(p => p.id === data.pageId);
+            const srcCol = srcPage.rows[data.rowIdx].columns[data.colIdx];
+            const targetCol = page.rows[rowIdx].columns[colIdx];
+            // swap
+            const temp = {
+              path: targetCol.path,
+              x: targetCol.x,
+              y: targetCol.y,
+              width: targetCol.width,
+              height: targetCol.height
+            };
+            targetCol.path = srcCol.path;
+            targetCol.x = srcCol.x;
+            targetCol.y = srcCol.y;
+            targetCol.width = srcCol.width;
+            targetCol.height = srcCol.height;
+            targetCol.url = srcCol.url;
+            srcCol.path = temp.path;
+            srcCol.x = temp.x;
+            srcCol.y = temp.y;
+            srcCol.width = temp.width;
+            srcCol.height = temp.height;
+            srcCol.url = temp.path ? this.imagesBank.find(i => i.name === temp.path).url : null;
+            this.saveAlbum();
+            this.$nextTick(() => {
+              if (targetCol.path) this.autoCrop(page, rowIdx, colIdx);
+              if (srcCol.path) this.autoCrop(srcPage, data.rowIdx, data.colIdx);
+            });
+          }
+        },
+        startBankDrag(event, img) {
+          event.dataTransfer.setData('application/json', JSON.stringify({ source: 'bank', name: img.name }));
+        },
+        startCellDrag(event, page, rowIdx, colIdx) {
+          event.dataTransfer.setData('application/json', JSON.stringify({ source: 'cell', pageId: page.id, rowIdx, colIdx }));
+        },
+        handleBankDrop(event) {
+          event.preventDefault();
+          const data = JSON.parse(event.dataTransfer.getData('application/json'));
+          if (data.source === 'cell') {
+            const srcPage = this.pages.find(p => p.id === data.pageId);
+            const srcCol = srcPage.rows[data.rowIdx].columns[data.colIdx];
+            const imgObj = this.imagesBank.find(i => i.name === srcCol.path);
+            imgObj.used = false;
+            delete srcCol.path;
+            delete srcCol.x;
+            delete srcCol.y;
+            delete srcCol.width;
+            delete srcCol.height;
+            delete srcCol.url;
+            this.saveAlbum();
+          }
+        },
+        scrollToImage(img) {
+          if (!img.used) return;
+          for (let i = 0; i < this.pages.length; i++) {
+            const page = this.pages[i];
+            page.rows.forEach((row, rowIdx) => {
+              row.columns.forEach((col, colIdx) => {
+                if (col.path === img.name) {
+                  if (i === 0) {
+                    this.currentViewStartIndex = 0;
+                  } else if (i === this.pages.length - 1) {
+                    this.currentViewStartIndex = i;
+                  } else {
+                    this.currentViewStartIndex = (i % 2 === 1 ? i : i - 1);
+                  }
+                  this.$nextTick(() => this.updateScale());
+                }
+              });
+            });
+          }
+        },
+        startRowResize(event, page, rowAboveIdx) {
+          this.resizing = true;
+          this.resizingType = 'row';
+          const rowAbove = page.rows[rowAboveIdx];
+          const rowBelow = page.rows[rowAboveIdx + 1];
+          this.resizeData = {
+            page,
+            rowAboveIdx,
+            startY: event.clientY,
+            abovePercent: rowAbove.height_percent,
+            belowPercent: rowBelow.height_percent
+          };
+          document.addEventListener('mousemove', this.doResize);
+          document.addEventListener('mouseup', this.stopResize);
+        },
+        startColResize(event, page, rowIdx, colLeftIdx) {
+          this.resizing = true;
+          this.resizingType = 'col';
+          const row = page.rows[rowIdx];
+          const colLeft = row.columns[colLeftIdx];
+          const colRight = row.columns[colLeftIdx + 1];
+          this.resizeData = {
+            page,
+            rowIdx,
+            colLeftIdx,
+            startX: event.clientX,
+            leftGrid: colLeft.width_grid,
+            rightGrid: colRight.width_grid
+          };
+          document.addEventListener('mousemove', this.doResize);
+          document.addEventListener('mouseup', this.stopResize);
+        },
+        doResize(event) {
+          if (!this.resizing) return;
+          if (this.resizingType === 'row') {
+            const { page, rowAboveIdx, startY, abovePercent, belowPercent } = this.resizeData;
+            const deltaY = (event.clientY - startY) / this.scale;
+            const contentEl = this.$refs.pageRef.querySelector('.page-content');
+            const contentHeight = contentEl.getBoundingClientRect().height;
+            let deltaPercent = (deltaY / contentHeight) * 100;
+            let newAbove = abovePercent + deltaPercent;
+            let newBelow = belowPercent - deltaPercent;
+            if (newAbove < 5) {
+              newAbove = 5;
+              newBelow = abovePercent + belowPercent - 5;
+            }
+            if (newBelow < 5) {
+              newBelow = 5;
+              newAbove = abovePercent + belowPercent - 5;
+            }
+            page.rows[rowAboveIdx].height_percent = newAbove;
+            page.rows[rowAboveIdx + 1].height_percent = newBelow;
+          } else if (this.resizingType === 'col') {
+            const { page, rowIdx, colLeftIdx, startX, leftGrid, rightGrid } = this.resizeData;
+            const deltaX = (event.clientX - startX) / this.scale;
+            const contentEl = this.$refs.pageRef.querySelector('.page-content');
+            const contentWidth = contentEl.getBoundingClientRect().width;
+            const deltaGrid = (deltaX / contentWidth) * 12;
+            const sumGrid = leftGrid + rightGrid;
+            let rawLeft = leftGrid + deltaGrid;
+            let newLeft = Math.round(rawLeft);
+            if (newLeft < 1) newLeft = 1;
+            if (newLeft > sumGrid - 1) newLeft = sumGrid - 1;
+            const newRight = sumGrid - newLeft;
+            page.rows[rowIdx].columns[colLeftIdx].width_grid = newLeft;
+            page.rows[rowIdx].columns[colLeftIdx + 1].width_grid = newRight;
+          }
+        },
+        stopResize() {
+          document.removeEventListener('mousemove', this.doResize);
+          document.removeEventListener('mouseup', this.stopResize);
+          this.resizing = false;
+          this.saveAlbum();
+          this.$nextTick(() => this.updateScale());
+        },
+        async autoCrop(page, rowIdx, colIdx) {
+          const col = page.rows[rowIdx].columns[colIdx];
+          const cellRef = this.$refs['cell-' + page.id + '-' + rowIdx + '-' + colIdx];
+          const cellRect = cellRef.getBoundingClientRect();
+          const imgObj = this.imagesBank.find(i => i.name === col.path);
+          const file = await imgObj.handle.getFile();
+          const img = new Image();
+          img.src = URL.createObjectURL(file);
+          img.onload = () => {
+            const ow = img.naturalWidth,
+              oh = img.naturalHeight;
+            const cellAspect = cellRect.width / cellRect.height;
+            const imgAspect = ow / oh;
+            let cropW, cropH, x, y;
+            if (imgAspect > cellAspect) {
+              cropH = oh;
+              cropW = oh * cellAspect;
+              x = (ow - cropW) / 2;
+              y = 0;
+            } else {
+              cropW = ow;
+              cropH = ow / cellAspect;
+              x = 0;
+              y = (oh - cropH) / 2;
+            }
+            col.x = x;
+            col.y = y;
+            col.width = cropW;
+            col.height = cropH;
+            col.url = img.src;
+            this.$nextTick(() => this.updateImageDisplay(page, rowIdx, colIdx));
+            this.saveAlbum();
+          };
+        },
+        updateImageDisplay(page, rowIdx, colIdx) {
+          const col = page.rows[rowIdx].columns[colIdx];
+          const cellRef = this.$refs['cell-' + page.id + '-' + rowIdx + '-' + colIdx];
+          const imgEl = cellRef.querySelector('img');
+          const cellRect = cellRef.getBoundingClientRect();
+          const scale = cellRect.height / col.height;
+          const dispW = imgEl.naturalWidth * scale;
+          const dispH = imgEl.naturalHeight * scale;
+          const transX = -col.x * scale;
+          const transY = -col.y * scale;
+          imgEl.style.width = dispW + 'px';
+          imgEl.style.height = dispH + 'px';
+          imgEl.style.transform = `translate(${transX}px, ${transY}px)`;
+        },
+        openCropModal(page, rowIdx, colIdx) {
+          const col = page.rows[rowIdx].columns[colIdx];
+          if (!col.path) return;
+          const imgObj = this.imagesBank.find(i => i.name === col.path);
+          const fileUrl = imgObj.url;
+          const cellRef = this.$refs['cell-' + page.id + '-' + rowIdx + '-' + colIdx];
+          const cellRect = cellRef.getBoundingClientRect();
+          const aspect = cellRect.width / cellRect.height;
+          this.cropping = { page, rowIdx, colIdx, instance: null };
+          const container = document.getElementById('croppieContainer');
+          container.innerHTML = '';
+          const croppieInst = new Croppie(container, {
+            viewport: { width: 300, height: 300 / aspect },
+            boundary: { width: 400, height: 400 }
+          });
+          croppieInst.bind({
+            url: fileUrl,
+            points: [col.x, col.y, col.x + col.width, col.y + col.height]
+          });
+          this.cropping.instance = croppieInst;
+          const modal = new bootstrap.Modal(document.getElementById('cropModal'));
+          modal.show();
+        },
+        async confirmCrop() {
+          const result = await this.cropping.instance.get();
+          const points = result.points;
+          const [x1, y1, x2, y2] = points;
+          const w = x2 - x1,
+            h = y2 - y1;
+          const page = this.cropping.page,
+            rowIdx = this.cropping.rowIdx,
+            colIdx = this.cropping.colIdx;
+          const col = page.rows[rowIdx].columns[colIdx];
+          col.x = x1;
+          col.y = y1;
+          col.width = w;
+          col.height = h;
+          this.$nextTick(() => this.updateImageDisplay(page, rowIdx, colIdx));
+          this.saveAlbum();
+          const modalEl = document.getElementById('cropModal');
+          const modal = bootstrap.Modal.getInstance(modalEl);
+          modal.hide();
+        }
+      };
+    }
+    // Close any open layout menus when clicking outside
+    document.addEventListener('click', function () {
+      const app = document.getElementById('app').__x.$data;
+      if (app) {
+        Object.keys(app.showLayoutMenu).forEach(key => {
+          app.showLayoutMenu[key] = false;
+        });
+      }
+    });
+  </script>
+</body>
+</html>
