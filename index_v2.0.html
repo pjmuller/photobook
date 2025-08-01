@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Family Album Photobook Creator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css" rel="stylesheet">
+    <style>
+        body { font-family: sans-serif; margin: 0; background-color: #f0f0f0; }
+        .app-container { display: flex; flex-direction: column; height: 100vh; }
+        .top-bar { position: fixed; top: 10px; right: 10px; z-index: 1050; }
+        .main-area {
+            flex-grow: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: auto;
+            padding-top: 60px; /* Space for top-bar */
+            padding-bottom: 190px; /* Space for image-bank */
+        }
+        .page-spread-container { display: flex; align-items: center; }
+        .page-wrapper {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            background-color: white;
+            position: relative; /* For layout icon positioning */
+        }
+        .page {
+            background-color: #fff;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* Important for containing rows/cells */
+        }
+        .page-row { display: flex; }
+        .page-cell {
+            background-color: #e9e9e9;
+            border: 2px dashed #ccc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #aaa;
+            font-size: 14px;
+            overflow: hidden; /* Crucial for image cropping */
+            position: relative; /* For image positioning */
+        }
+        .page-cell img.cropped-image {
+            position: absolute; /* Will be controlled by transform */
+            display: block;
+            max-width: none !important; /* Override bootstrap or other styles */
+            max-height: none !important;
+        }
+        .page-cell.has-image { border-style: solid; border-color: #bbb; }
+        .gutter { background-color: #ddd; cursor: default; }
+        .gutter-row-resize { cursor: row-resize !important; }
+        .gutter-col-resize { cursor: col-resize !important; }
+        .spine-shadow {
+            width: 20px; /* Adjust as needed */
+            background: linear-gradient(to right, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 100%);
+            position: relative;
+            z-index: 1;
+        }
+        .page-wrapper.left-page .spine-shadow {
+            background: linear-gradient(to left, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0) 100%);
+        }
+        .page-number-display {
+            position: fixed;
+            bottom: 180px; /* Above image bank */
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0,0,0,0.6);
+            color: white;
+            padding: 5px 15px;
+            border-radius: 15px;
+            font-size: 0.9em;
+            z-index: 100;
+        }
+        .image-bank {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 170px;
+            background-color: #333;
+            padding: 10px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            white-space: nowrap;
+            z-index: 100;
+        }
+        .image-bank-thumb {
+            display: inline-block;
+            margin-right: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            background-color: #555;
+            overflow: hidden;
+            transition: transform 0.2s ease-out;
+        }
+        .image-bank-thumb img {
+            display: block;
+            border-radius: 3px;
+        }
+        .image-bank-thumb:hover { transform: scale(1.05); }
+        .image-bank-thumb.used { opacity: 0.5; cursor: pointer; }
+        .image-bank-thumb.available { cursor: grab; }
+        .layout-change-icon {
+            position: absolute;
+            top: 8px;
+            background-color: rgba(255,255,255,0.8);
+            padding: 5px;
+            border-radius: 50%;
+            cursor: pointer;
+            z-index: 10;
+        }
+        .layout-change-icon.left-page { left: 8px; }
+        .layout-change-icon.right-page { right: 8px; }
+        .layout-menu {
+            position: absolute;
+            background-color: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 5px;
+            z-index: 20;
+            min-width: 100px;
+        }
+        .layout-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            white-space: pre; /* To render unicode block characters correctly */
+            font-family: monospace;
+            font-size: 1.2em;
+            line-height: 1.1;
+        }
+        .layout-menu-item:hover { background-color: #f0f0f0; }
+        .loading-overlay, .initial-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(255,255,255,0.9);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            flex-direction: column;
+        }
+        .dragging-cell-image {
+            opacity: 0.7;
+            border: 2px dashed blue;
+        }
+        .drop-target-active {
+            outline: 3px dashed dodgerblue;
+            outline-offset: -3px;
+        }
+        /* Croppie Modal */
+        #cropModal .modal-dialog { max-width: 90vw; }
+        #croppie-container { width: 100%; height: 60vh; }
+
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body x-data="photobookApp()" x-init="initApp()" x-cloak>
+
+    <div class="initial-overlay" x-show="!appReady && !isLoading && !error">
+        <button class="btn btn-primary btn-lg" @click="selectFolder()">
+            <i class="bi bi-folder2-open"></i> Select Image Folder
+        </button>
+    </div>
+
+    <div class="loading-overlay" x-show="isLoading">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="mt-2" x-text="loadingMessage"></p>
+    </div>
+
+    <div class="loading-overlay" x-show="error && !isLoading">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">Error</h4>
+            <p x-text="error"></p>
+            <hr>
+            <p class="mb-0">Please resolve the issue and <a href="#" @click.prevent="window.location.reload()">reload the page</a>, or select a different folder.</p>
+            <button class="btn btn-primary mt-3" @click="error = ''; appReady = false;">Select Different Folder</button>
+        </div>
+    </div>
+
+    <template x-if="appReady">
+        <div>
+            <!-- Top Right Floating Buttons -->
+            <div class="top-bar">
+                <div class="btn-group me-2" role="group" aria-label="Navigation">
+                    <button type="button" class="btn btn-light" @click="prevSpread()" :disabled="currentSpreadIndex === 0" title="Previous Page/Spread">
+                        <i class="bi bi-arrow-left"></i>
+                    </button>
+                    <button type="button" class="btn btn-light" @click="nextSpread()" :disabled="currentSpreadIndex === maxSpreadIndex" title="Next Page/Spread">
+                        <i class="bi bi-arrow-right"></i>
+                    </button>
+                </div>
+                <div class="btn-group" role="group" aria-label="Page Actions">
+                    <button type="button" class="btn btn-light" @click="addSpread()" title="Add New Spread">
+                        <i class="bi bi-plus-lg"></i>
+                    </button>
+                    <button type="button" class="btn btn-light" @click="confirmDeleteSpread()" 
+                            :disabled="isCurrentViewSinglePage()" title="Delete Current Spread (disabled for single pages)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <div class="btn-group" role="group">
+                        <button id="btnGroupDrop1" type="button" class="btn btn-light dropdown-toggle" 
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                :disabled="isCurrentViewSinglePage()" title="Move Spread (disabled for single pages)">
+                            <i class="bi bi-arrow-left-right"></i>
+                        </button>
+                        <ul class="dropdown-menu" aria-labelledby="btnGroupDrop1">
+                            <li><a class="dropdown-item" href="#" @click.prevent="moveCurrentSpreadLeft()" :class="{ 'disabled': !canMoveSpreadLeft() }"><i class="bi bi-arrow-bar-left"></i> Move Left</a></li>
+                            <li><a class="dropdown-item" href="#" @click.prevent="moveCurrentSpreadRight()" :class="{ 'disabled': !canMoveSpreadRight() }"><i class="bi bi-arrow-bar-right"></i> Move Right</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Area -->
+            <div class="main-area" 
+                 @dragover.prevent="handleDragOver" 
+                 @drop.prevent="handleDropOnBankArea">
+                <div class="page-spread-container" x-show="currentPagesData.length > 0">
+                    <!-- Left Page (or single first/last page on left) -->
+                    <template x-if="currentPagesData[0]">
+                        <div class="page-wrapper left-page" :style="getPageWrapperStyle(0)">
+                            <div class="page" :style="getPageStyle(currentPagesData[0])"
+                                 @dragover.prevent @drop.prevent="handleDropOnPageArea(currentPagesData[0].id)">
+                                <template x-for="(row, rowIndex) in currentPagesData[0].rows" :key="`${currentPagesData[0].id}-r-${rowIndex}`">
+                                    <div> <!-- Row wrapper for gutter logic -->
+                                        <div class="page-row" :style="{ height: row.height + 'px' }">
+                                            <template x-for="(cell, cellIndex) in row.cells" :key="`${currentPagesData[0].id}-r-${rowIndex}-c-${cellIndex}`">
+                                                <div> <!-- Cell wrapper for gutter logic -->
+                                                    <div class="page-cell"
+                                                         :style="getCellStyle(currentPagesData[0], rowIndex, cellIndex)"
+                                                         :class="{ 'has-image': cell.path, [dragState.dropTargetClass]: dragState.isDraggingOverCell === `${currentPagesData[0].id}-${rowIndex}-${cellIndex}` }"
+                                                         @dragenter="handleDragEnterCell(currentPagesData[0].id, rowIndex, cellIndex)"
+                                                         @dragleave="handleDragLeaveCell(currentPagesData[0].id, rowIndex, cellIndex)"
+                                                         @drop.prevent.stop="handleDropOnCell(currentPagesData[0].id, rowIndex, cellIndex, $event)"
+                                                         @dragstart="handleCellImageDragStart(currentPagesData[0].id, rowIndex, cellIndex, $event)"
+                                                         :draggable="!!cell.path"
+                                                         @dblclick="if (cell.path) openCropModal(currentPagesData[0].id, rowIndex, cellIndex)">
+                                                        <template x-if="cell.path">
+                                                            <img :src="getImageSrc(cell.path)" class="cropped-image" :style="getImageDisplayTransform(currentPagesData[0].id, rowIndex, cellIndex, cell.width, row.height)" alt="Cropped image">
+                                                        </template>
+                                                        <template x-if="!cell.path">
+                                                            <span>Drop image</span>
+                                                        </template>
+                                                    </div>
+                                                    <!-- Vertical Gutter -->
+                                                    <template x-if="cellIndex < row.cells.length - 1">
+                                                        <div class="gutter gutter-col-resize"
+                                                             :style="{ width: PAGE_GUTTER + 'px', height: row.height + 'px' }"
+                                                             @mousedown.prevent="startCellGutterDrag($event, currentPagesData[0].id, rowIndex, cellIndex)">
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <!-- Horizontal Gutter -->
+                                        <template x-if="rowIndex < currentPagesData[0].rows.length - 1">
+                                            <div class="gutter gutter-row-resize"
+                                                 :style="{ height: PAGE_GUTTER + 'px', width: PAGE_WIDTH + 'px' }"
+                                                 @mousedown.prevent="startRowGutterDrag($event, currentPagesData[0].id, rowIndex)">
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <!-- Layout Change Icon -->
+                                <template x-if="!isPageFixedLayout(currentPagesData[0].id)">
+                                    <i class="bi bi-grid-fill layout-change-icon"
+                                       :class="currentPagesData.length === 1 && currentSpreadIndex === maxSpreadIndex ? 'left-page' : 'left-page'" 
+                                       @click.stop="toggleLayoutMenu(currentPagesData[0].id, $event)"></i>
+                                    <div x-show="showLayoutMenuForPageId === currentPagesData[0].id" class="layout-menu"
+                                         :style="getLayoutMenuPosition(currentPagesData[0].id)"
+                                         @click.outside="closeLayoutMenu">
+                                        <template x-for="layoutKey in Object.keys(LAYOUTS)" :key="layoutKey">
+                                            <div class="layout-menu-item" @click="changePageLayout(currentPagesData[0].id, layoutKey)" x-html="getLayoutSymbol(layoutKey)"></div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+
+                    <!-- Spine shadow / Gutter between pages in a spread -->
+                    <template x-if="currentPagesData.length === 2 && currentPagesData[0] && currentPagesData[1]">
+                         <div class="spine-shadow" :style="{ height: (PAGE_HEIGHT + 2 * PAGE_OUTER_MARGIN) + 'px' }"></div>
+                    </template>
+                    
+                    <!-- Right Page -->
+                    <template x-if="currentPagesData.length === 2 && currentPagesData[1]">
+                        <div class="page-wrapper right-page" :style="getPageWrapperStyle(1)">
+                             <div class="page" :style="getPageStyle(currentPagesData[1])"
+                                  @dragover.prevent @drop.prevent="handleDropOnPageArea(currentPagesData[1].id)">
+                                <template x-for="(row, rowIndex) in currentPagesData[1].rows" :key="`${currentPagesData[1].id}-r-${rowIndex}`">
+                                    <div> <!-- Row wrapper for gutter logic -->
+                                        <div class="page-row" :style="{ height: row.height + 'px' }">
+                                            <template x-for="(cell, cellIndex) in row.cells" :key="`${currentPagesData[1].id}-r-${rowIndex}-c-${cellIndex}`">
+                                                <div> <!-- Cell wrapper for gutter logic -->
+                                                    <div class="page-cell"
+                                                         :style="getCellStyle(currentPagesData[1], rowIndex, cellIndex)"
+                                                         :class="{ 'has-image': cell.path, [dragState.dropTargetClass]: dragState.isDraggingOverCell === `${currentPagesData[1].id}-${rowIndex}-${cellIndex}` }"
+                                                         @dragenter="handleDragEnterCell(currentPagesData[1].id, rowIndex, cellIndex)"
+                                                         @dragleave="handleDragLeaveCell(currentPagesData[1].id, rowIndex, cellIndex)"
+                                                         @drop.prevent.stop="handleDropOnCell(currentPagesData[1].id, rowIndex, cellIndex, $event)"
+                                                         @dragstart="handleCellImageDragStart(currentPagesData[1].id, rowIndex, cellIndex, $event)"
+                                                         :draggable="!!cell.path"
+                                                         @dblclick="if (cell.path) openCropModal(currentPagesData[1].id, rowIndex, cellIndex)">
+                                                        <template x-if="cell.path">
+                                                            <img :src="getImageSrc(cell.path)" class="cropped-image" :style="getImageDisplayTransform(currentPagesData[1].id, rowIndex, cellIndex, cell.width, row.height)" alt="Cropped image">
+                                                        </template>
+                                                        <template x-if="!cell.path">
+                                                            <span>Drop image</span>
+                                                        </template>
+                                                    </div>
+                                                    <!-- Vertical Gutter -->
+                                                    <template x-if="cellIndex < row.cells.length - 1">
+                                                        <div class="gutter gutter-col-resize"
+                                                             :style="{ width: PAGE_GUTTER + 'px', height: row.height + 'px' }"
+                                                             @mousedown.prevent="startCellGutterDrag($event, currentPagesData[1].id, rowIndex, cellIndex)">
+                                                        </div>
+                                                    </template>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <!-- Horizontal Gutter -->
+                                        <template x-if="rowIndex < currentPagesData[1].rows.length - 1">
+                                            <div class="gutter gutter-row-resize"
+                                                 :style="{ height: PAGE_GUTTER + 'px', width: PAGE_WIDTH + 'px' }"
+                                                 @mousedown.prevent="startRowGutterDrag($event, currentPagesData[1].id, rowIndex)">
+                                            </div>
+                                        </template>
+                                    </div>
+                                </template>
+                                <!-- Layout Change Icon -->
+                                <template x-if="!isPageFixedLayout(currentPagesData[1].id)">
+                                    <i class="bi bi-grid-fill layout-change-icon right-page" 
+                                       @click.stop="toggleLayoutMenu(currentPagesData[1].id, $event)"></i>
+                                    <div x-show="showLayoutMenuForPageId === currentPagesData[1].id" class="layout-menu"
+                                         :style="getLayoutMenuPosition(currentPagesData[1].id)"
+                                         @click.outside="closeLayoutMenu">
+                                        <template x-for="layoutKey in Object.keys(LAYOUTS)" :key="layoutKey">
+                                            <div class="layout-menu-item" @click="changePageLayout(currentPagesData[1].id, layoutKey)" x-html="getLayoutSymbol(layoutKey)"></div>
+                                        </template>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Page Number Display -->
+            <div class="page-number-display" x-text="currentPageNumberDisplay"></div>
+
+            <!-- Image Bank -->
+            <div class="image-bank" 
+                 @dragover.prevent="dragState.isDraggingOverBank = true" 
+                 @dragleave="dragState.isDraggingOverBank = false"
+                 @drop.prevent.stop="handleDropOnBank"
+                 :class="{ 'drop-target-active': dragState.isDraggingOverBank && dragState.draggedItemType === 'cellImage' }">
+                <template x-for="image in sortedImageBankImages" :key="image.path">
+                    <div class="image-bank-thumb"
+                         :class="{ 'used': isImageUsed(image.path), 'available': !isImageUsed(image.path) }"
+                         :title="image.name"
+                         @click="if(isImageUsed(image.path)) handleBankImageClick(image)"
+                         @dragstart="if(!isImageUsed(image.path)) handleBankImageDragStart(image, $event)"
+                         :draggable="!isImageUsed(image.path)">
+                        <img :src="image.dataUrl" :style="{ height: IMAGE_BANK_THUMB_HEIGHT + 'px', width: image.thumbWidth + 'px' }">
+                    </div>
+                </template>
+            </div>
+
+            <!-- Croppie Modal -->
+            <div class="modal fade" id="cropModal" tabindex="-1" aria-labelledby="cropModalLabel" aria-hidden="true">
+                <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="cropModalLabel">Crop Image</h5>
+                            <button type="button" class="btn-close" @click="closeCropModal" aria-label="Close"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div id="croppie-container"></div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" @click="closeCropModal">Cancel</button>
+                            <button type="button" class="btn btn-primary" @click="applyCropFromModal">Apply Crop</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Confirmation Modal for Delete -->
+            <div class="modal fade" id="confirmDeleteModal" tabindex="-1" aria-labelledby="confirmDeleteModalLabel" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title" id="confirmDeleteModalLabel">Confirm Deletion</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    Are you sure you want to delete this spread? This action cannot be undone.
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" @click="deleteCurrentSpread">Delete</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+        </div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/exif-js@2.3.0/exif.js"></script>
+
+    <script>
+    const PAGE_OUTER_MARGIN = 20;
+    const PAGE_WIDTH = 730;
+    const PAGE_HEIGHT = 598;
+    const ROW_MIN_HEIGHT = 100;
+    const CELL_MIN_WIDTH = 100;
+    const PAGE_GUTTER = 10;
+    const PHOTOBOOK_VERSION = "2.0";
+    const IMAGE_BANK_THUMB_HEIGHT = 150;
+
+    const LAYOUTS = {
+        "1": { name: "1", symbol: '██', rows: [{ cells: 1 }] },
+        "2-2": { name: "2-2", symbol: '██▌██▌\n██▌██▌', rows: [{ cells: 2 }, { cells: 2 }] },
+        "2-3": { name: "2-3", symbol: '██▌██▌\n█▌█▌█▌', rows: [{ cells: 2 }, { cells: 3 }] },
+        "3-2": { name: "3-2", symbol: '█▌█▌█▌\n██▌██▌', rows: [{ cells: 3 }, { cells: 2 }] }
+    };
+
+    function photobookApp() {
+        return {
+            // Constants
+            PAGE_OUTER_MARGIN, PAGE_WIDTH, PAGE_HEIGHT, ROW_MIN_HEIGHT, CELL_MIN_WIDTH, PAGE_GUTTER, PHOTOBOOK_VERSION, LAYOUTS, IMAGE_BANK_THUMB_HEIGHT,
+
+            // State
+            directoryHandle: null,
+            album: { photobook_version: PHOTOBOOK_VERSION, pages: [] },
+            imagesInFolder: [], // { path, name, dataUrl, exifDateTimeOriginal, originalWidth, originalHeight, thumbWidth }
+            imageObjectURLs: {}, // To store Object URLs for original images for Croppie and display
+            currentSpreadIndex: 0,
+            isLoading: false,
+            loadingMessage: '',
+            appReady: false,
+            error: '',
+            
+            showLayoutMenuForPageId: null,
+            layoutMenuPosition: { top: '0px', left: '0px' },
+
+            croppieInstance: null,
+            cropModalInstance: null,
+            confirmDeleteModalInstance: null,
+            croppingCellInfo: null, // { pageId, rowIndex, cellIndex, imagePath, cellWidth, cellHeight }
+            
+            dragState: {
+                isDragging: false,
+                draggedItemType: null, // 'bankImage', 'cellImage'
+                draggedItemData: null, // { path, sourcePageId?, sourceRowIndex?, sourceCellIndex? }
+                draggedElement: null, // The HTML element being dragged
+                isDraggingOverCell: null, // pageId-rowIndex-cellIndex
+                isDraggingOverBank: false,
+                dropTargetClass: 'drop-target-active', // CSS class for visual feedback
+            },
+
+            gutterDragState: {
+                isDragging: false,
+                type: null, // 'row' or 'cell'
+                pageId: null,
+                rowIndex: null, 
+                cellGutterIndex: null, // for cell resize (index of gutter, so affects cell cellGutterIndex and cellGutterIndex+1)
+                startX: 0,
+                startY: 0,
+                initialPrimarySize: 0,
+                initialSecondarySize: 0,
+                // No need for elements, we'll update the data model directly
+            },
+
+            // --- Initialization ---
+            initApp() {
+                // Initialize Bootstrap components that need it
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[title]'));
+                tooltipTriggerList.map(function (tooltipTriggerEl) {
+                    if (bootstrap && bootstrap.Tooltip) { // Check if bootstrap is loaded
+                         new bootstrap.Tooltip(tooltipTriggerEl);
+                    }
+                });
+                // Setup modal instances
+                if (document.getElementById('cropModal')) {
+                    this.cropModalInstance = new bootstrap.Modal(document.getElementById('cropModal'));
+                }
+                if (document.getElementById('confirmDeleteModal')) {
+                    this.confirmDeleteModalInstance = new bootstrap.Modal(document.getElementById('confirmDeleteModal'));
+                }
+
+                // Add global mouse listeners for gutter dragging
+                document.addEventListener('mousemove', (e) => this.onGutterDrag(e));
+                document.addEventListener('mouseup', (e) => this.stopGutterDrag(e));
+            },
+
+            // --- File System & Loading ---
+            async selectFolder() {
+                this.isLoading = true;
+                this.loadingMessage = 'Waiting for folder selection...';
+                this.error = '';
+                try {
+                    this.directoryHandle = await window.showDirectoryPicker();
+                    this.loadingMessage = 'Loading images from folder...';
+                    await this.loadImagesFromFolder();
+                    if (this.imagesInFolder.length === 0) {
+                        this.error = "Selected folder contains no JPG images. Please select another folder.";
+                        this.isLoading = false;
+                        this.appReady = false;
+                        this.directoryHandle = null;
+                        return;
+                    }
+                    this.loadingMessage = 'Loading album data...';
+                    await this.loadAlbumData();
+                    this.appReady = true;
+                } catch (err) {
+                    console.error("Error selecting folder or loading data:", err);
+                    if (err.name !== 'AbortError') { // User didn't cancel
+                        this.error = `Failed to access folder or load data: ${err.message}`;
+                    }
+                    this.appReady = false;
+                    this.directoryHandle = null;
+                } finally {
+                    this.isLoading = false;
+                    this.loadingMessage = '';
+                }
+            },
+
+            async loadImagesFromFolder() {
+                this.imagesInFolder = [];
+                const tempImages = [];
+                for await (const entry of this.directoryHandle.values()) {
+                    if (entry.kind === 'file' && (entry.name.toLowerCase().endsWith('.jpg') || entry.name.toLowerCase().endsWith('.jpeg'))) {
+                        try {
+                            const file = await entry.getFile();
+                            const imageDetails = await this.loadImageDetails(file, entry.name);
+                            if (imageDetails) tempImages.push(imageDetails);
+                        } catch (e) {
+                            console.warn(`Could not process file ${entry.name}: ${e.message}`);
+                        }
+                    }
+                }
+                // Sort images
+                tempImages.sort((a, b) => {
+                    const aDate = a.exifDateTimeOriginal ? new Date(a.exifDateTimeOriginal.replace(/:/g, '-').replace(' ', 'T')) : null;
+                    const bDate = b.exifDateTimeOriginal ? new Date(b.exifDateTimeOriginal.replace(/:/g, '-').replace(' ', 'T')) : null;
+
+                    if (aDate && bDate) {
+                        if (aDate.getTime() === bDate.getTime()) return a.name.localeCompare(b.name);
+                        return aDate - bDate;
+                    } else if (aDate) return -1;
+                    else if (bDate) return 1;
+                    else return a.name.localeCompare(b.name);
+                });
+                this.imagesInFolder = tempImages;
+
+                // Pre-cache object URLs for images
+                this.imagesInFolder.forEach(img => {
+                    this.getImageSrc(img.path); // This will create and store ObjectURL if not exists
+                });
+            },
+            
+            async loadImageDetails(file, path) {
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const dataUrl = e.target.result;
+                        const img = new Image();
+                        img.onload = () => {
+                            const originalWidth = img.width;
+                            const originalHeight = img.height;
+                            const thumbWidth = this.calculateThumbWidth(originalWidth, originalHeight, this.IMAGE_BANK_THUMB_HEIGHT);
+                            
+                            EXIF.getData(file, () => {
+                                const exifDateTimeOriginal = EXIF.getTag(file, "DateTimeOriginal");
+                                resolve({
+                                    path: path, // Use relative path (filename)
+                                    name: file.name,
+                                    dataUrl: dataUrl, // For thumbnails
+                                    exifDateTimeOriginal: exifDateTimeOriginal,
+                                    originalWidth: originalWidth,
+                                    originalHeight: originalHeight,
+                                    thumbWidth: thumbWidth,
+                                    fileHandle: file // Keep file object for Croppie
+                                });
+                            });
+                        };
+                        img.onerror = () => {
+                             console.warn(`Could not load image dimensions for ${path}`);
+                             resolve(null); // Or some default error state
+                        }
+                        img.src = dataUrl;
+                    };
+                    reader.onerror = () => {
+                        console.warn(`Could not read file ${path}`);
+                        resolve(null);
+                    }
+                    reader.readAsDataURL(file);
+                });
+            },
+
+            async loadAlbumData() {
+                try {
+                    const fileHandle = await this.directoryHandle.getFileHandle('album.json', { create: false });
+                    const file = await fileHandle.getFile();
+                    const text = await file.text();
+                    const loadedAlbum = JSON.parse(text);
+
+                    if (loadedAlbum.photobook_version !== this.PHOTOBOOK_VERSION) {
+                        this.error = `The existing album.json has an incompatible version (${loadedAlbum.photobook_version}). Required version is ${this.PHOTOBOOK_VERSION}. Please remove or backup album.json and reload.`;
+                        this.appReady = false; // Prevent app from fully loading
+                        return;
+                    }
+                    this.album = loadedAlbum;
+                    // Validate and repair data if necessary (e.g. ensure all images in album exist in folder)
+                    this.validateAlbumData();
+
+                } catch (e) {
+                    // If album.json doesn't exist or other error, create a default album
+                    console.log("album.json not found or error loading, creating default album.", e.message);
+                    this.album = this.createDefaultAlbum();
+                    await this.saveAlbum();
+                }
+                this.currentSpreadIndex = 0; // Start at the first page/spread
+            },
+
+            validateAlbumData() {
+                const validImagePaths = new Set(this.imagesInFolder.map(img => img.path));
+                let changed = false;
+                this.album.pages.forEach(page => {
+                    page.rows.forEach(row => {
+                        row.cells.forEach(cell => {
+                            if (cell.path && !validImagePaths.has(cell.path)) {
+                                console.warn(`Image ${cell.path} in album not found in folder. Removing from cell.`);
+                                delete cell.path;
+                                delete cell.crop_x;
+                                delete cell.crop_y;
+                                delete cell.crop_width;
+                                delete cell.crop_height;
+                                changed = true;
+                            }
+                        });
+                    });
+                });
+                if (changed) this.saveAlbum();
+            },
+
+            async saveAlbum() {
+                if (!this.directoryHandle) return;
+                try {
+                    const fileHandle = await this.directoryHandle.getFileHandle('album.json', { create: true });
+                    const writable = await fileHandle.createWritable();
+                    await writable.write(JSON.stringify(this.album, null, 2));
+                    await writable.close();
+                    console.log("Album saved.");
+                } catch (e) {
+                    console.error("Error saving album:", e);
+                    this.error = `Error saving album.json: ${e.message}. Changes might not be persisted.`;
+                }
+            },
+
+            createDefaultAlbum() {
+                const page1 = this.generatePageStructure("1", this.generateUUID());
+                const page2 = this.generatePageStructure("2-3", this.generateUUID());
+                const page3 = this.generatePageStructure("3-2", this.generateUUID());
+                const page4 = this.generatePageStructure("1", this.generateUUID());
+                return {
+                    photobook_version: this.PHOTOBOOK_VERSION,
+                    pages: [page1, page2, page3, page4]
+                };
+            },
+
+            // --- Page/Spread Navigation & Management ---
+            get currentPagesData() {
+                if (!this.album || !this.album.pages || this.album.pages.length === 0) return [];
+                
+                if (this.isFirstPageSingleActive) {
+                    return [this.album.pages[0]];
+                }
+                if (this.isLastPageSingleActive) {
+                    return [this.album.pages[this.album.pages.length - 1]];
+                }
+                // Spread view
+                const leftPageIndex = 1 + (this.currentSpreadIndex - 1) * 2;
+                const rightPageIndex = leftPageIndex + 1;
+                
+                const leftPage = this.album.pages[leftPageIndex];
+                const rightPage = this.album.pages[rightPageIndex];
+
+                if (leftPage && rightPage) return [leftPage, rightPage];
+                if (leftPage) return [leftPage, null]; // Should not happen with current logic
+
+                return []; // Should not happen
+            },
+
+            get totalAlbumPages() { return this.album.pages.length; },
+
+            get maxSpreadIndex() {
+                return Math.ceil((this.totalAlbumPages - 1) / 2);
+            },
+
+            get isFirstPageSingleActive() {
+                return this.currentSpreadIndex === 0 && this.totalAlbumPages > 0;
+            },
+            get isLastPageSingleActive() {
+                // Last page is active if currentSpreadIndex is the maxSpreadIndex AND total pages > 1
+                // AND this maxSpreadIndex corresponds to a single page view.
+                // This happens if totalAlbumPages is odd (e.g., 1, 3, 5) or if it's the very last page of an even set (e.g. page 6 of 6)
+                if (this.totalAlbumPages === 0) return false;
+                if (this.totalAlbumPages === 1 && this.currentSpreadIndex === 0) return true; // This is covered by isFirstPageSingleActive if only 1 page
+                
+                // The last view index is `this.maxSpreadIndex`
+                // It's a single last page if `this.currentSpreadIndex === this.maxSpreadIndex`
+                // AND this view is indeed for the single last page.
+                // This means `1 + (this.currentSpreadIndex - 1) * 2` would be `this.totalAlbumPages - 1`.
+                const expectedLastPageContentIndex = this.totalAlbumPages - 1;
+                const currentViewFirstContentIndex = this.isFirstPageSingleActive ? 0 : (1 + (this.currentSpreadIndex - 1) * 2);
+                
+                return this.currentSpreadIndex === this.maxSpreadIndex && currentViewFirstContentIndex === expectedLastPageContentIndex && this.totalAlbumPages > 1;
+            },
+
+            isCurrentViewSinglePage() {
+                return this.isFirstPageSingleActive || this.isLastPageSingleActive;
+            },
+
+            get currentPageNumberDisplay() {
+                if (!this.album.pages || this.totalAlbumPages === 0) return "";
+                
+                const pageObjects = this.currentPagesData;
+                if (pageObjects.length === 0) return "";
+
+                if (this.isFirstPageSingleActive) {
+                    return `Page 1 / ${this.totalAlbumPages}`;
+                }
+                if (this.isLastPageSingleActive) {
+                    return `Page ${this.totalAlbumPages} / ${this.totalAlbumPages}`;
+                }
+                // Spread view
+                const leftActualPageNum = 1 + (this.currentSpreadIndex - 1) * 2 + 1; // +1 because page numbers are 1-based
+                const rightActualPageNum = leftActualPageNum + 1;
+                return `Pages ${leftActualPageNum}-${rightActualPageNum} / ${this.totalAlbumPages}`;
+            },
+
+            nextSpread() { if (this.currentSpreadIndex < this.maxSpreadIndex) this.currentSpreadIndex++; this.closeLayoutMenu(); },
+            prevSpread() { if (this.currentSpreadIndex > 0) this.currentSpreadIndex--; this.closeLayoutMenu(); },
+
+            addSpread() {
+                // Adds a new, empty double-page spread (with "2-2" & "2-2" layout)
+                // after the current page (spread) except when on the last page, then add it before it.
+                // After add, switches to the new spread.
+                const newPageLeft = this.generatePageStructure("2-2", this.generateUUID());
+                const newPageRight = this.generatePageStructure("2-2", this.generateUUID());
+                
+                let insertionIndex;
+                if (this.totalAlbumPages === 0) { // Empty album
+                    this.album.pages.push(this.generatePageStructure("1", this.generateUUID())); // First page
+                    this.album.pages.push(newPageLeft);
+                    this.album.pages.push(newPageRight);
+                    this.album.pages.push(this.generatePageStructure("1", this.generateUUID())); // Last page
+                    this.currentSpreadIndex = 1; // Go to the new spread
+                } else if (this.isLastPageSingleActive) { // On the last page, add before it
+                    insertionIndex = this.totalAlbumPages - 1;
+                    this.album.pages.splice(insertionIndex, 0, newPageLeft, newPageRight);
+                    // currentSpreadIndex remains on last page, or should point to new spread?
+                    // "After add, switches to the new spread."
+                    // If last page was index X, new spread is at X, X+1. Last page is now X+2.
+                    // New spread's view index: this.currentSpreadIndex (it pushed the last page view index up by 1)
+                } else if (this.isFirstPageSingleActive) { // On the first page
+                    insertionIndex = 1; // After the first page
+                    this.album.pages.splice(insertionIndex, 0, newPageLeft, newPageRight);
+                    this.currentSpreadIndex = 1; // Go to the new spread (which is view index 1)
+                } else { // On a spread
+                    // currentSpreadIndex corresponds to view of pages (1 + (idx-1)*2) and (1 + (idx-1)*2 + 1)
+                    insertionIndex = 1 + (this.currentSpreadIndex - 1) * 2 + 2; // After the current spread's right page
+                    this.album.pages.splice(insertionIndex, 0, newPageLeft, newPageRight);
+                    this.currentSpreadIndex += 1; // Go to the new spread
+                }
+                this.saveAlbum();
+            },
+
+            confirmDeleteSpread() {
+                if (this.isCurrentViewSinglePage()) return; // Should be disabled
+                this.confirmDeleteModalInstance.show();
+            },
+
+            deleteCurrentSpread() {
+                this.confirmDeleteModalInstance.hide();
+                if (this.isCurrentViewSinglePage()) return;
+
+                const leftPageIndexInAlbum = 1 + (this.currentSpreadIndex - 1) * 2;
+                this.album.pages.splice(leftPageIndexInAlbum, 2); // Remove two pages
+
+                // Return images to bank
+                const removedPages = this.album.pages.slice(leftPageIndexInAlbum, leftPageIndexInAlbum + 2); // Get them before splice
+                removedPages.forEach(page => {
+                    if (page) page.rows.forEach(row => row.cells.forEach(cell => {
+                        if (cell.path) { /* This path is now available */ }
+                    }));
+                });
+                // Recalculate usedImagePathsSet implicitly on next render or check
+
+                if (this.currentSpreadIndex > this.maxSpreadIndex) {
+                    this.currentSpreadIndex = this.maxSpreadIndex;
+                }
+                if (this.totalAlbumPages < 2 && this.totalAlbumPages > 0) { // Only first page left, or became empty
+                    this.currentSpreadIndex = 0;
+                } else if (this.totalAlbumPages === 0) {
+                    // Create a minimal album if all pages are gone
+                    this.album = this.createDefaultAlbum();
+                    this.currentSpreadIndex = 0;
+                }
+                
+                this.saveAlbum();
+            },
+
+            canMoveSpreadLeft() {
+                if (this.isCurrentViewSinglePage() || this.totalAlbumPages < 4) return false;
+                // Cannot move if it's the first spread (currentSpreadIndex === 1)
+                return this.currentSpreadIndex > 1;
+            },
+            canMoveSpreadRight() {
+                if (this.isCurrentViewSinglePage() || this.totalAlbumPages < 4) return false;
+                // Cannot move if it's the last spread
+                // Last spread view index is maxSpreadIndex - 1 (if last page is single)
+                return this.currentSpreadIndex < this.maxSpreadIndex -1;
+            },
+            moveCurrentSpread(direction) { // direction: -1 for left, 1 for right
+                if (this.isCurrentViewSinglePage()) return;
+                if (direction === -1 && !this.canMoveSpreadLeft()) return;
+                if (direction === 1 && !this.canMoveSpreadRight()) return;
+
+                const currentLeftIdx = 1 + (this.currentSpreadIndex - 1) * 2;
+                const spreadToMove = this.album.pages.splice(currentLeftIdx, 2); // [leftPage, rightPage]
+                
+                const targetLeftIdx = currentLeftIdx + (direction * 2);
+                this.album.pages.splice(targetLeftIdx, 0, ...spreadToMove);
+                
+                this.currentSpreadIndex += direction;
+                this.saveAlbum();
+            },
+            moveCurrentSpreadLeft() { this.moveCurrentSpread(-1); },
+            moveCurrentSpreadRight() { this.moveCurrentSpread(1); },
+
+            // --- Layouts ---
+            generatePageStructure(layoutKey, pageId = null) {
+                const layout = LAYOUTS[layoutKey];
+                if (!layout) throw new Error(`Unknown layout key: ${layoutKey}`);
+                pageId = pageId || this.generateUUID();
+
+                const newPage = {
+                    id: pageId,
+                    layout: layoutKey,
+                    rows: []
+                };
+
+                const numRows = layout.rows.length;
+                const defaultRowHeight = Math.floor((this.PAGE_HEIGHT - (numRows - 1) * this.PAGE_GUTTER) / numRows);
+                
+                let accumulatedHeight = 0;
+                for (let i = 0; i < numRows; i++) {
+                    const rowDef = layout.rows[i];
+                    const numCells = rowDef.cells;
+                    const rowHeight = (i === numRows - 1) ? (this.PAGE_HEIGHT - accumulatedHeight - (numRows - 1 - i) * this.PAGE_GUTTER) : defaultRowHeight;
+                    
+                    const newRow = { height: rowHeight, cells: [] };
+
+                    const defaultCellWidth = Math.floor((this.PAGE_WIDTH - (numCells - 1) * this.PAGE_GUTTER) / numCells);
+                    let accumulatedWidth = 0;
+                    for (let j = 0; j < numCells; j++) {
+                        const cellWidth = (j === numCells - 1) ? (this.PAGE_WIDTH - accumulatedWidth - (numCells - 1 - j) * this.PAGE_GUTTER) : defaultCellWidth;
+                        newRow.cells.push({ width: cellWidth });
+                        accumulatedWidth += cellWidth;
+                        if (j < numCells - 1) accumulatedWidth += this.PAGE_GUTTER;
+                    }
+                    newPage.rows.push(newRow);
+                    accumulatedHeight += rowHeight;
+                    if (i < numRows - 1) accumulatedHeight += this.PAGE_GUTTER;
+                }
+                return newPage;
+            },
+
+            toggleLayoutMenu(pageId, event) {
+                if (this.showLayoutMenuForPageId === pageId) {
+                    this.closeLayoutMenu();
+                } else {
+                    this.showLayoutMenuForPageId = pageId;
+                    const iconRect = event.target.getBoundingClientRect();
+                    const pageWrapper = event.target.closest('.page-wrapper');
+                    const pageWrapperRect = pageWrapper.getBoundingClientRect();
+
+                    if (event.target.classList.contains('left-page')) {
+                         this.layoutMenuPosition = { top: (iconRect.bottom - pageWrapperRect.top + 5) + 'px', left: (iconRect.left - pageWrapperRect.left) + 'px' };
+                    } else { // right-page
+                         this.layoutMenuPosition = { top: (iconRect.bottom - pageWrapperRect.top + 5) + 'px', right: (pageWrapperRect.right - iconRect.right) + 'px', left: 'auto' };
+                    }
+                }
+            },
+            closeLayoutMenu() { this.showLayoutMenuForPageId = null; },
+            getLayoutMenuPosition(pageId) {
+                // This logic is now inside toggleLayoutMenu, this getter just returns the state
+                return this.layoutMenuPosition;
+            },
+
+
+            async changePageLayout(pageId, newLayoutKey) {
+                const pageIndex = this.album.pages.findIndex(p => p.id === pageId);
+                if (pageIndex === -1) return;
+
+                const oldPage = JSON.parse(JSON.stringify(this.album.pages[pageIndex])); // Deep copy for reference
+                const newPageStructure = this.generatePageStructure(newLayoutKey, pageId); // New structure, same ID
+
+                const oldImages = []; // { path, crop_x, ..., originalRowIndex, originalCellIndex }
+                oldPage.rows.forEach((row, rIdx) => {
+                    row.cells.forEach((cell, cIdx) => {
+                        if (cell.path) {
+                            oldImages.push({ ...cell, originalRowIndex: rIdx, originalCellIndex: cIdx });
+                        }
+                    });
+                });
+                
+                let imagesToKeep = [...oldImages];
+                const newPagePopulated = JSON.parse(JSON.stringify(newPageStructure)); // Work on a copy
+
+                // Rule of thumb: keep as much as possible.
+                // Iterate new cells, try to fill from oldImages if indices match and dimensions are similar.
+                // This is complex. Let's follow specific rules first.
+
+                if (oldPage.layout === "1" && newLayoutKey !== "1") { // "1" to Any
+                    if (imagesToKeep.length > 0) {
+                        const img = imagesToKeep.shift();
+                        newPagePopulated.rows[0].cells[0].path = img.path;
+                        // Crop data will be reset by autoCrop later
+                    }
+                } else if (newLayoutKey === "1" && oldPage.layout !== "1") { // Any to "1"
+                    if (imagesToKeep.length > 0) {
+                        const img = imagesToKeep.shift(); // Keep first image
+                        newPagePopulated.rows[0].cells[0].path = img.path;
+                    }
+                } else if (oldPage.layout === "2-3" && newLayoutKey === "2-2") { // "2-3" to "2-2"
+                    // Row 0 (2 cells to 2 cells): try to keep
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)) newPagePopulated.rows[0].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)) newPagePopulated.rows[0].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)};
+                    // Row 1 (3 cells to 2 cells): keep first two
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)) newPagePopulated.rows[1].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)) newPagePopulated.rows[1].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)};
+                    imagesToKeep = imagesToKeep.filter(img => !( (img.originalRowIndex === 0 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) || (img.originalRowIndex === 1 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) ));
+                } else if (oldPage.layout === "3-2" && newLayoutKey === "2-2") { // "3-2" to "2-2"
+                     // Row 0 (3 cells to 2 cells): keep first two
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)) newPagePopulated.rows[0].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)) newPagePopulated.rows[0].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)};
+                    // Row 1 (2 cells to 2 cells): try to keep
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)) newPagePopulated.rows[1].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)) newPagePopulated.rows[1].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)};
+                    imagesToKeep = imagesToKeep.filter(img => !( (img.originalRowIndex === 0 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) || (img.originalRowIndex === 1 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) ));
+                } else if ((oldPage.layout === "2-3" && newLayoutKey === "3-2") || (oldPage.layout === "3-2" && newLayoutKey === "2-3")) { // Swap rows
+                    newPagePopulated.rows[0] = JSON.parse(JSON.stringify(oldPage.rows[1])); // new top is old bottom
+                    newPagePopulated.rows[1] = JSON.parse(JSON.stringify(oldPage.rows[0])); // new bottom is old top
+                    // Heights need to be from newPageStructure, cells from oldPage
+                    newPagePopulated.rows[0].height = newPageStructure.rows[0].height;
+                    newPagePopulated.rows[1].height = newPageStructure.rows[1].height;
+                    imagesToKeep = []; // All images handled
+                } else if (oldPage.layout === "2-2" && newLayoutKey === "2-3") { // "2-2" to "2-3"
+                    // Row 0 (2 to 2): keep
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)) newPagePopulated.rows[0].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)) newPagePopulated.rows[0].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)};
+                    // Row 1 (2 to 3): keep first two if possible
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)) newPagePopulated.rows[1].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)) newPagePopulated.rows[1].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)};
+                    imagesToKeep = imagesToKeep.filter(img => !( (img.originalRowIndex === 0 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) || (img.originalRowIndex === 1 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) ));
+                } else if (oldPage.layout === "2-2" && newLayoutKey === "3-2") { // "2-2" to "3-2"
+                    // Row 0 (2 to 3): keep first two
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)) newPagePopulated.rows[0].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)) newPagePopulated.rows[0].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 0 && img.originalCellIndex === 1)};
+                    // Row 1 (2 to 2): keep
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)) newPagePopulated.rows[1].cells[0] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 0)};
+                    if (imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)) newPagePopulated.rows[1].cells[1] = {...imagesToKeep.find(img => img.originalRowIndex === 1 && img.originalCellIndex === 1)};
+                    imagesToKeep = imagesToKeep.filter(img => !( (img.originalRowIndex === 0 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) || (img.originalRowIndex === 1 && (img.originalCellIndex === 0 || img.originalCellIndex ===1)) ));
+                } else { // Generic: try to map cell by cell, row by row
+                    let imageIdx = 0;
+                    for (let r = 0; r < newPagePopulated.rows.length; r++) {
+                        for (let c = 0; c < newPagePopulated.rows[r].cells.length; c++) {
+                            if (imageIdx < imagesToKeep.length) {
+                                newPagePopulated.rows[r].cells[c] = {...imagesToKeep[imageIdx]}; // Spread to copy
+                                imageIdx++;
+                            }
+                        }
+                    }
+                    imagesToKeep.splice(0, imageIdx); // Remove used images
+                }
+
+                // Restore widths/heights from newPageStructure, but keep image data if path exists
+                newPagePopulated.rows.forEach((row, rIdx) => {
+                    row.height = newPageStructure.rows[rIdx].height;
+                    row.cells.forEach((cell, cIdx) => {
+                        cell.width = newPageStructure.rows[rIdx].cells[cIdx].width;
+                        if (!cell.path) { // If cell became empty, ensure no crop data
+                            delete cell.crop_x; delete cell.crop_y; delete cell.crop_width; delete cell.crop_height;
+                        }
+                    });
+                });
+                
+                this.album.pages[pageIndex] = newPagePopulated;
+
+                // Auto-crop all images in the modified page as their cell dimensions might have changed
+                for (let r = 0; r < newPagePopulated.rows.length; r++) {
+                    for (let c = 0; c < newPagePopulated.rows[r].cells.length; c++) {
+                        if (newPagePopulated.rows[r].cells[c].path) {
+                            await this.autoCropImage(pageId, r, c, true); // Force re-crop
+                        }
+                    }
+                }
+                
+                this.closeLayoutMenu();
+                this.saveAlbum();
+                // Note: Images returned to bank are implicitly handled by usedImagePathsSet re-computation.
+            },
+
+            getLayoutSymbol(layoutKey) { return LAYOUTS[layoutKey].symbol.replace('\n', '<br>'); },
+            isPageFixedLayout(pageId) {
+                if (!this.album.pages || this.album.pages.length === 0) return true;
+                return pageId === this.album.pages[0].id || pageId === this.album.pages[this.totalAlbumPages - 1].id;
+            },
+
+            // --- Image Bank ---
+            get sortedImageBankImages() { return this.imagesInFolder; /* Already sorted during load */ },
+            
+            _usedImagePathsSetCache: null,
+            _albumVersionForCache: null, // To invalidate cache if album changes
+            get usedImagePathsSet() {
+                if (this._usedImagePathsSetCache && this.album.photobook_version === this._albumVersionForCache && JSON.stringify(this.album.pages) === this._albumPagesCache) { // A bit heavy for check
+                    return this._usedImagePathsSetCache;
+                }
+                const set = new Set();
+                if (this.album && this.album.pages) {
+                    this.album.pages.forEach(p => p.rows.forEach(r => r.cells.forEach(c => {
+                        if (c.path) set.add(c.path);
+                    })));
+                }
+                this._usedImagePathsSetCache = set;
+                this._albumVersionForCache = this.album.photobook_version;
+                this._albumPagesCache = JSON.stringify(this.album.pages);
+                return set;
+            },
+            isImageUsed(imagePath) { return this.usedImagePathsSet.has(imagePath); },
+            
+            calculateThumbWidth(originalWidth, originalHeight, fixedHeight) {
+                if (!originalWidth || !originalHeight) return fixedHeight; // Default to square if dims unknown
+                return (originalWidth / originalHeight) * fixedHeight;
+            },
+            
+            handleBankImageClick(image) { // Jump to page where image is used
+                if (!this.isImageUsed(image.path)) return;
+                for (let spreadIdx = 0; spreadIdx <= this.maxSpreadIndex; spreadIdx++) {
+                    let pagesInSpread = [];
+                    if (spreadIdx === 0 && this.totalAlbumPages > 0) { // First page
+                        pagesInSpread.push(this.album.pages[0]);
+                    } else if (spreadIdx === this.maxSpreadIndex && this.totalAlbumPages > 1) { // Last page potentially
+                         const lastPageAlbumIndex = this.totalAlbumPages - 1;
+                         const firstPageIndexOfThisView = (1 + (spreadIdx - 1) * 2);
+                         if (firstPageIndexOfThisView === lastPageAlbumIndex) { // This view is the single last page
+                            pagesInSpread.push(this.album.pages[lastPageAlbumIndex]);
+                         } else if (firstPageIndexOfThisView < lastPageAlbumIndex) { // This view is a spread, and might be the one before a single last page
+                            pagesInSpread.push(this.album.pages[firstPageIndexOfThisView]);
+                            if (firstPageIndexOfThisView + 1 < this.totalAlbumPages) pagesInSpread.push(this.album.pages[firstPageIndexOfThisView+1]);
+                         }
+                    } else if (this.totalAlbumPages > 1) { // Regular spread
+                        const leftPageIndex = 1 + (spreadIdx - 1) * 2;
+                        if (leftPageIndex < this.totalAlbumPages) pagesInSpread.push(this.album.pages[leftPageIndex]);
+                        if (leftPageIndex + 1 < this.totalAlbumPages) pagesInSpread.push(this.album.pages[leftPageIndex + 1]);
+                    }
+
+                    for (const page of pagesInSpread) {
+                        if (page && page.rows.some(r => r.cells.some(c => c.path === image.path))) {
+                            this.currentSpreadIndex = spreadIdx;
+                            return;
+                        }
+                    }
+                }
+            },
+
+            // --- Drag & Drop ---
+            handleBankImageDragStart(image, event) {
+                this.dragState.isDragging = true;
+                this.dragState.draggedItemType = 'bankImage';
+                this.dragState.draggedItemData = { path: image.path };
+                event.dataTransfer.effectAllowed = 'copyMove';
+                event.dataTransfer.setData('text/plain', image.path); // Required for Firefox
+                this.dragState.draggedElement = event.target.closest('.image-bank-thumb');
+                if (this.dragState.draggedElement) this.dragState.draggedElement.style.opacity = '0.5';
+            },
+            handleCellImageDragStart(pageId, rowIndex, cellIndex, event) {
+                const cell = this.getCellById(pageId, rowIndex, cellIndex);
+                if (!cell || !cell.path) return;
+
+                this.dragState.isDragging = true;
+                this.dragState.draggedItemType = 'cellImage';
+                this.dragState.draggedItemData = { 
+                    path: cell.path, 
+                    sourcePageId: pageId, 
+                    sourceRowIndex: rowIndex, 
+                    sourceCellIndex: cellIndex,
+                    // Include crop data to potentially preserve it if dropped back or swapped carefully
+                    crop_x: cell.crop_x, crop_y: cell.crop_y, crop_width: cell.crop_width, crop_height: cell.crop_height
+                };
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', cell.path);
+                this.dragState.draggedElement = event.target.closest('.page-cell');
+                if (this.dragState.draggedElement) this.dragState.draggedElement.classList.add('dragging-cell-image');
+            },
+            handleDragOver(event) { // Generic drag over for main area, page, cell
+                event.preventDefault(); 
+                if (this.dragState.isDragging) event.dataTransfer.dropEffect = 'move';
+            },
+            handleDragEnterCell(pageId, rowIndex, cellIndex) {
+                if (this.dragState.isDragging) {
+                    this.dragState.isDraggingOverCell = `${pageId}-${rowIndex}-${cellIndex}`;
+                }
+            },
+            handleDragLeaveCell(pageId, rowIndex, cellIndex) {
+                if (this.dragState.isDraggingOverCell === `${pageId}-${rowIndex}-${cellIndex}`) {
+                    this.dragState.isDraggingOverCell = null;
+                }
+            },
+            async handleDropOnCell(targetPageId, targetRowIndex, targetCellIndex, event) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!this.dragState.isDragging) return;
+
+                const targetCell = this.getCellById(targetPageId, targetRowIndex, targetCellIndex);
+                if (!targetCell) return;
+
+                const draggedData = this.dragState.draggedItemData;
+                const imagePath = draggedData.path;
+
+                // Prevent dropping an image onto itself or if it's already used (from bank) and not a swap
+                if (this.dragState.draggedItemType === 'bankImage' && this.isImageUsed(imagePath)) {
+                    // If target cell is empty, this is fine. If target cell has an image, it's a swap (handled below)
+                    // The main issue is dragging a used image from bank to an empty cell - this should not be allowed.
+                    // However, the bank image should be disabled if used. So this path is less likely.
+                    // For now, let's assume bank images are only draggable if available.
+                }
+                
+                const imageBeingReplaced = targetCell.path ? {...targetCell} : null; // Copy existing cell content
+
+                // Update target cell
+                targetCell.path = imagePath;
+                // If dragged from another cell and it's a simple move (not swap with itself), preserve crop
+                if (this.dragState.draggedItemType === 'cellImage' && 
+                    !(draggedData.sourcePageId === targetPageId && draggedData.sourceRowIndex === targetRowIndex && draggedData.sourceCellIndex === targetCellIndex)) {
+                    targetCell.crop_x = draggedData.crop_x;
+                    targetCell.crop_y = draggedData.crop_y;
+                    targetCell.crop_width = draggedData.crop_width;
+                    targetCell.crop_height = draggedData.crop_height;
+                    await this.autoCropImage(targetPageId, targetRowIndex, targetCellIndex, false); // Recrop if aspect ratio differs
+                } else {
+                     await this.autoCropImage(targetPageId, targetRowIndex, targetCellIndex, true); // Fresh crop
+                }
+
+
+                if (this.dragState.draggedItemType === 'cellImage') {
+                    // Dragged from another cell
+                    const sourceCell = this.getCellById(draggedData.sourcePageId, draggedData.sourceRowIndex, draggedData.sourceCellIndex);
+                    if (sourceCell && !(draggedData.sourcePageId === targetPageId && draggedData.sourceRowIndex === targetRowIndex && draggedData.sourceCellIndex === targetCellIndex)) {
+                        if (imageBeingReplaced && imageBeingReplaced.path) { // It's a swap
+                            sourceCell.path = imageBeingReplaced.path;
+                            sourceCell.crop_x = imageBeingReplaced.crop_x;
+                            sourceCell.crop_y = imageBeingReplaced.crop_y;
+                            sourceCell.crop_width = imageBeingReplaced.crop_width;
+                            sourceCell.crop_height = imageBeingReplaced.crop_height;
+                            await this.autoCropImage(draggedData.sourcePageId, draggedData.sourceRowIndex, draggedData.sourceCellIndex, false);
+                        } else { // Moved to an empty or different cell, clear source
+                            delete sourceCell.path;
+                            delete sourceCell.crop_x; delete sourceCell.crop_y; delete sourceCell.crop_width; delete sourceCell.crop_height;
+                        }
+                    }
+                } else if (this.dragState.draggedItemType === 'bankImage') {
+                    // Dragged from bank. If target cell had an image, it's returned to bank (implicitly by usedImagePathsSet)
+                    // No specific action needed for imageBeingReplaced here, it's just overwritten.
+                }
+                
+                this.handleDragEnd(); // Reset drag state
+                this.saveAlbum();
+            },
+            handleDropOnBank(event) {
+                event.preventDefault();
+                if (this.dragState.draggedItemType === 'cellImage') {
+                    const { sourcePageId, sourceRowIndex, sourceCellIndex } = this.dragState.draggedItemData;
+                    const cell = this.getCellById(sourcePageId, sourceRowIndex, sourceCellIndex);
+                    if (cell) {
+                        delete cell.path;
+                        delete cell.crop_x; delete cell.crop_y; delete cell.crop_width; delete cell.crop_height;
+                        this.saveAlbum();
+                    }
+                }
+                this.handleDragEnd();
+            },
+            handleDropOnBankArea(event) { // For drops outside specific bank items but on the bank zone
+                if (this.dragState.isDraggingOverBank) {
+                    this.handleDropOnBank(event);
+                } else {
+                     this.handleDragEnd(); // Or do nothing if not a valid drop target
+                }
+            },
+            handleDropOnPageArea(pageId, event) {
+                // If an image is dropped onto the page background (not a cell), and it's from a cell on THAT page,
+                // it could be interpreted as "remove from this cell and return to bank".
+                // However, current setup requires dropping on bank or another cell.
+                // For now, this just cleans up drag state if drop wasn't on a cell.
+                if (!this.dragState.isDraggingOverCell) {
+                    this.handleDragEnd();
+                }
+            },
+            handleDragEnd() {
+                if (this.dragState.draggedElement) {
+                    if (this.dragState.draggedItemType === 'bankImage') {
+                        this.dragState.draggedElement.style.opacity = '';
+                    } else if (this.dragState.draggedItemType === 'cellImage') {
+                        this.dragState.draggedElement.classList.remove('dragging-cell-image');
+                    }
+                }
+                this.dragState.isDragging = false;
+                this.dragState.draggedItemType = null;
+                this.dragState.draggedItemData = null;
+                this.dragState.draggedElement = null;
+                this.dragState.isDraggingOverCell = null;
+                this.dragState.isDraggingOverBank = false;
+            },
+
+            // --- Cropping ---
+            async autoCropImage(pageId, rowIndex, cellIndex, forceRecrop = false) {
+                const cell = this.getCellById(pageId, rowIndex, cellIndex);
+                if (!cell || !cell.path) return;
+
+                // If crop data already exists and not forcing recrop, keep it.
+                // This is useful if cell dimensions change slightly, we might not want to reset user's fine-tuned crop.
+                // However, spec says "recrop the images to fill the cells where we changed row height or cell width"
+                // and "On mouseup, remove the event listeners and immediately trigger the auto-crop function for all images within the resized cells."
+                // This implies auto-crop should generally re-calculate.
+                // The `forceRecrop` flag helps distinguish initial drop from resize/layout change.
+
+                const imageInBank = this.imagesInFolder.find(img => img.path === cell.path);
+                if (!imageInBank || !imageInBank.originalWidth || !imageInBank.originalHeight) {
+                    console.error("Original image dimensions not found for auto-crop:", cell.path);
+                    return;
+                }
+
+                const imgOriginalWidth = imageInBank.originalWidth;
+                const imgOriginalHeight = imageInBank.originalHeight;
+                
+                const cellData = this.getCellDimensions(pageId, rowIndex, cellIndex); // Gets current cell width/height from model
+                const cellWidth = cellData.width;
+                const cellHeight = cellData.height;
+
+                if (cellWidth === 0 || cellHeight === 0) return; // Avoid division by zero
+
+                const imgAspectRatio = imgOriginalWidth / imgOriginalHeight;
+                const cellAspectRatio = cellWidth / cellHeight;
+
+                let crop_width, crop_height, crop_x, crop_y;
+
+                if (imgAspectRatio > cellAspectRatio) { // Image is wider than cell (relatively)
+                    crop_height = imgOriginalHeight;
+                    crop_width = imgOriginalHeight * cellAspectRatio;
+                    crop_x = (imgOriginalWidth - crop_width) / 2;
+                    crop_y = 0;
+                } else { // Image is taller than cell (relatively) or same aspect ratio
+                    crop_width = imgOriginalWidth;
+                    crop_height = imgOriginalWidth / cellAspectRatio;
+                    crop_x = 0;
+                    crop_y = (imgOriginalHeight - crop_height) / 2;
+                }
+                
+                // Only update if forceRecrop or if crop data doesn't exist
+                if (forceRecrop || cell.crop_width == null) {
+                    cell.crop_x = Math.round(crop_x);
+                    cell.crop_y = Math.round(crop_y);
+                    cell.crop_width = Math.round(crop_width);
+                    cell.crop_height = Math.round(crop_height);
+                }
+                // No need to save album here, usually called within other ops that save
+            },
+
+            async openCropModal(pageId, rowIndex, cellIndex) {
+                const cell = this.getCellById(pageId, rowIndex, cellIndex);
+                if (!cell || !cell.path) return;
+
+                const imageInBank = this.imagesInFolder.find(img => img.path === cell.path);
+                if (!imageInBank) return;
+
+                this.croppingCellInfo = { pageId, rowIndex, cellIndex, imagePath: cell.path, 
+                                          cellWidth: cell.width, cellHeight: cell.height };
+
+                if (this.croppieInstance) {
+                    this.croppieInstance.destroy();
+                    this.croppieInstance = null;
+                }
+                
+                const croppieContainer = document.getElementById('croppie-container');
+                croppieContainer.innerHTML = ''; // Clear previous
+
+                const cellAspectRatio = cell.width / cell.height;
+
+                this.croppieInstance = new Croppie(croppieContainer, {
+                    viewport: { width: Math.min(600, cell.width * 2), height: Math.min(600 / cellAspectRatio, cell.height * 2), type: 'square' }, // viewport size, type can be square or circle
+                    boundary: { width: '100%', height: '100%' }, // container size
+                    enableExif: true,
+                    enableOrientation: true,
+                    enforceBoundary: true, // Prevents viewport from being dragged outside image
+                });
+                
+                // Croppie's `points` are [x1, y1, x2, y2] on the original image.
+                const points = [
+                    cell.crop_x,
+                    cell.crop_y,
+                    cell.crop_x + cell.crop_width,
+                    cell.crop_y + cell.crop_height
+                ];
+
+                try {
+                    const imageSrc = this.getImageSrc(cell.path); // Get Object URL
+                    await this.croppieInstance.bind({
+                        url: imageSrc,
+                        points: points,
+                        // zoom: 0 // Let Croppie calculate initial zoom based on points to fit viewport
+                    });
+                    this.cropModalInstance.show();
+                } catch (error) {
+                    console.error("Error binding image to Croppie:", error);
+                    this.error = "Could not load image for cropping.";
+                }
+            },
+
+            async applyCropFromModal() {
+                if (!this.croppieInstance || !this.croppingCellInfo) return;
+
+                const result = await this.croppieInstance.result({
+                    type: 'rawcanvas', // We don't need the canvas, just the points
+                    size: 'original', // Get points relative to original image
+                    format: 'jpeg', // Not strictly needed for rawcanvas points
+                });
+                // The 'result' from rawcanvas doesn't directly give points. We need to use `get()`
+                const cropData = this.croppieInstance.get(); // { points: [x1,y1,x2,y2], zoom: number }
+                                                            // points are relative to the *current* view of the image in croppie (potentially zoomed/panned)
+                                                            // these points are coordinates on the original image.
+
+                const cell = this.getCellById(this.croppingCellInfo.pageId, this.croppingCellInfo.rowIndex, this.croppingCellInfo.cellIndex);
+                if (cell) {
+                    cell.crop_x = Math.round(cropData.points[0]);
+                    cell.crop_y = Math.round(cropData.points[1]);
+                    cell.crop_width = Math.round(cropData.points[2] - cropData.points[0]);
+                    cell.crop_height = Math.round(cropData.points[3] - cropData.points[1]);
+                    this.saveAlbum();
+                }
+                this.closeCropModal();
+            },
+
+            closeCropModal() {
+                if (this.croppieInstance) {
+                    //this.croppieInstance.destroy(); // Destroy if modal is fully closed, not just hidden
+                    //this.croppieInstance = null;
+                }
+                this.cropModalInstance.hide();
+                this.croppingCellInfo = null;
+            },
+
+            getCellById(pageId, rowIndex, cellIndex) {
+                const page = this.album.pages.find(p => p.id === pageId);
+                return page ? page.rows[rowIndex].cells[cellIndex] : null;
+            },
+            getPageById(pageId) { return this.album.pages.find(p => p.id === pageId); },
+
+            getImageSrc(imagePath) {
+                if (this.imageObjectURLs[imagePath]) {
+                    return this.imageObjectURLs[imagePath];
+                }
+                const imageFile = this.imagesInFolder.find(img => img.path === imagePath)?.fileHandle;
+                if (imageFile) {
+                    const url = URL.createObjectURL(imageFile);
+                    this.imageObjectURLs[imagePath] = url;
+                    return url;
+                }
+                return ''; // Placeholder or error image
+            },
+
+            getImageDisplayTransform(pageId, rowIndex, cellIndex, cellWidth, cellHeight) {
+                const cell = this.getCellById(pageId, rowIndex, cellIndex);
+                if (!cell || !cell.path || cell.crop_width == null) return '';
+
+                const originalImage = this.imagesInFolder.find(img => img.path === cell.path);
+                if (!originalImage || !originalImage.originalWidth || !originalImage.originalHeight) return '';
+
+                const { crop_x, crop_y, crop_width, crop_height } = cell;
+                if (crop_width === 0 || crop_height === 0) return '';
+
+                const scale = Math.max(cellWidth / crop_width, cellHeight / crop_height);
+                
+                const scaled_crop_width = crop_width * scale;
+                const scaled_crop_height = crop_height * scale;
+
+                const offsetX = (cellWidth - scaled_crop_width) / 2;
+                const offsetY = (cellHeight - scaled_crop_height) / 2;
+
+                const translateX = offsetX - (crop_x * scale);
+                const translateY = offsetY - (crop_y * scale);
+
+                return `width: ${originalImage.originalWidth}px; height: ${originalImage.originalHeight}px; transform-origin: 0 0; transform: translate(${translateX}px, ${translateY}px) scale(${scale});`;
+            },
+
+            // --- Gutter Resizing ---
+            startRowGutterDrag(event, pageId, rowIndex) { // rowIndex is the row ABOVE the gutter
+                const page = this.getPageById(pageId);
+                if (!page || rowIndex >= page.rows.length - 1) return;
+
+                this.gutterDragState.isDragging = true;
+                this.gutterDragState.type = 'row';
+                this.gutterDragState.pageId = pageId;
+                this.gutterDragState.rowIndex = rowIndex; // Index of the primary row (the one above gutter)
+                this.gutterDragState.startY = event.clientY;
+                this.gutterDragState.initialPrimarySize = page.rows[rowIndex].height;
+                this.gutterDragState.initialSecondarySize = page.rows[rowIndex + 1].height;
+            },
+            startCellGutterDrag(event, pageId, rowIndex, cellGutterIndex) { // cellGutterIndex is the cell LEFT of the gutter
+                const page = this.getPageById(pageId);
+                if (!page || cellGutterIndex >= page.rows[rowIndex].cells.length - 1) return;
+
+                this.gutterDragState.isDragging = true;
+                this.gutterDragState.type = 'cell';
+                this.gutterDragState.pageId = pageId;
+                this.gutterDragState.rowIndex = rowIndex;
+                this.gutterDragState.cellGutterIndex = cellGutterIndex; // Index of the primary cell (left of gutter)
+                this.gutterDragState.startX = event.clientX;
+                this.gutterDragState.initialPrimarySize = page.rows[rowIndex].cells[cellGutterIndex].width;
+                this.gutterDragState.initialSecondarySize = page.rows[rowIndex].cells[cellGutterIndex + 1].width;
+            },
+            onGutterDrag(event) {
+                if (!this.gutterDragState.isDragging) return;
+                event.preventDefault();
+
+                const page = this.getPageById(this.gutterDragState.pageId);
+                if (!page) return this.stopGutterDrag();
+
+                if (this.gutterDragState.type === 'row') {
+                    const dy = event.clientY - this.gutterDragState.startY;
+                    let newPrimaryHeight = this.gutterDragState.initialPrimarySize + dy;
+                    let newSecondaryHeight = this.gutterDragState.initialSecondarySize - dy;
+
+                    // Enforce min height
+                    if (newPrimaryHeight < this.ROW_MIN_HEIGHT) {
+                        newSecondaryHeight -= (this.ROW_MIN_HEIGHT - newPrimaryHeight);
+                        newPrimaryHeight = this.ROW_MIN_HEIGHT;
+                    }
+                    if (newSecondaryHeight < this.ROW_MIN_HEIGHT) {
+                        newPrimaryHeight -= (this.ROW_MIN_HEIGHT - newSecondaryHeight);
+                        newSecondaryHeight = this.ROW_MIN_HEIGHT;
+                    }
+                    // Check again if pushing one to min made other too small (can happen if total space is small)
+                    if (newPrimaryHeight < this.ROW_MIN_HEIGHT) newPrimaryHeight = this.ROW_MIN_HEIGHT;
+                    if (newSecondaryHeight < this.ROW_MIN_HEIGHT) newSecondaryHeight = this.ROW_MIN_HEIGHT;
+                    
+                    // Ensure total height is preserved (it might change slightly due to clamping)
+                    // This is tricky. The sum of the two rows must be initialPrimary + initialSecondary.
+                    const totalHeightForTwoRows = this.gutterDragState.initialPrimarySize + this.gutterDragState.initialSecondarySize;
+                    if (newPrimaryHeight + newSecondaryHeight !== totalHeightForTwoRows) {
+                        if (newPrimaryHeight === this.ROW_MIN_HEIGHT) { // Primary is at min, secondary takes rest
+                            newSecondaryHeight = totalHeightForTwoRows - newPrimaryHeight;
+                        } else if (newSecondaryHeight === this.ROW_MIN_HEIGHT) { // Secondary is at min
+                            newPrimaryHeight = totalHeightForTwoRows - newSecondaryHeight;
+                        }
+                        // If both somehow hit min and sum is still off, it's a problem with initial setup or too small space.
+                    }
+
+
+                    page.rows[this.gutterDragState.rowIndex].height = Math.round(newPrimaryHeight);
+                    page.rows[this.gutterDragState.rowIndex + 1].height = Math.round(newSecondaryHeight);
+
+                } else if (this.gutterDragState.type === 'cell') {
+                    const dx = event.clientX - this.gutterDragState.startX;
+                    let newPrimaryWidth = this.gutterDragState.initialPrimarySize + dx;
+                    let newSecondaryWidth = this.gutterDragState.initialSecondarySize - dx;
+                    
+                    const row = page.rows[this.gutterDragState.rowIndex];
+
+                    if (newPrimaryWidth < this.CELL_MIN_WIDTH) {
+                        newSecondaryWidth -= (this.CELL_MIN_WIDTH - newPrimaryWidth);
+                        newPrimaryWidth = this.CELL_MIN_WIDTH;
+                    }
+                    if (newSecondaryWidth < this.CELL_MIN_WIDTH) {
+                        newPrimaryWidth -= (this.CELL_MIN_WIDTH - newSecondaryWidth);
+                        newSecondaryWidth = this.CELL_MIN_WIDTH;
+                    }
+                    if (newPrimaryWidth < this.CELL_MIN_WIDTH) newPrimaryWidth = this.CELL_MIN_WIDTH;
+                    if (newSecondaryWidth < this.CELL_MIN_WIDTH) newSecondaryWidth = this.CELL_MIN_WIDTH;
+
+                    const totalWidthForTwoCells = this.gutterDragState.initialPrimarySize + this.gutterDragState.initialSecondarySize;
+                     if (newPrimaryWidth + newSecondaryWidth !== totalWidthForTwoCells) {
+                        if (newPrimaryWidth === this.CELL_MIN_WIDTH) {
+                            newSecondaryWidth = totalWidthForTwoCells - newPrimaryWidth;
+                        } else if (newSecondaryWidth === this.CELL_MIN_WIDTH) {
+                            newPrimaryWidth = totalWidthForTwoCells - newSecondaryWidth;
+                        }
+                    }
+
+                    row.cells[this.gutterDragState.cellGutterIndex].width = Math.round(newPrimaryWidth);
+                    row.cells[this.gutterDragState.cellGutterIndex + 1].width = Math.round(newSecondaryWidth);
+                }
+            },
+            async stopGutterDrag() {
+                if (!this.gutterDragState.isDragging) return;
+                
+                const pageId = this.gutterDragState.pageId;
+                const page = this.getPageById(pageId);
+
+                if (page) {
+                    if (this.gutterDragState.type === 'row') {
+                        // Auto-crop images in the two affected rows
+                        const r1 = this.gutterDragState.rowIndex;
+                        const r2 = r1 + 1;
+                        for (let c = 0; c < page.rows[r1].cells.length; c++) {
+                            if (page.rows[r1].cells[c].path) await this.autoCropImage(pageId, r1, c, true);
+                        }
+                        for (let c = 0; c < page.rows[r2].cells.length; c++) {
+                            if (page.rows[r2].cells[c].path) await this.autoCropImage(pageId, r2, c, true);
+                        }
+                    } else if (this.gutterDragState.type === 'cell') {
+                        // Auto-crop images in the two affected cells
+                        const r = this.gutterDragState.rowIndex;
+                        const c1 = this.gutterDragState.cellGutterIndex;
+                        const c2 = c1 + 1;
+                        if (page.rows[r].cells[c1].path) await this.autoCropImage(pageId, r, c1, true);
+                        if (page.rows[r].cells[c2].path) await this.autoCropImage(pageId, r, c2, true);
+                    }
+                }
+
+                this.gutterDragState.isDragging = false;
+                this.gutterDragState.type = null;
+                // Clear other gutterDragState properties
+                this.saveAlbum();
+            },
+
+            // --- Utilities ---
+            generateUUID() { return crypto.randomUUID(); },
+            
+            getPageWrapperStyle(pageIndexInSpread) { // 0 for left, 1 for right
+                let style = {
+                    width: (this.PAGE_WIDTH + 2 * this.PAGE_OUTER_MARGIN) + 'px',
+                    height: (this.PAGE_HEIGHT + 2 * this.PAGE_OUTER_MARGIN) + 'px',
+                    padding: this.PAGE_OUTER_MARGIN + 'px',
+                };
+                if (this.currentPagesData.length === 1) { // Single page view
+                    if (this.isFirstPageSingleActive) { // First page, align right-ish
+                        // style.margin = '0 0 0 auto'; // This might not be centered
+                    } else if (this.isLastPageSingleActive) { // Last page, align left-ish
+                        // style.margin = '0 auto 0 0';
+                    }
+                } else { // Spread view
+                    if (pageIndexInSpread === 0) style.marginRight = (this.PAGE_GUTTER / 2) + 'px'; // Half of spine for visual
+                    if (pageIndexInSpread === 1) style.marginLeft = (this.PAGE_GUTTER / 2) + 'px';
+                }
+                return style;
+            },
+            getPageStyle(pageData) {
+                return {
+                    width: this.PAGE_WIDTH + 'px',
+                    height: this.PAGE_HEIGHT + 'px',
+                };
+            },
+            getCellStyle(pageData, rowIndex, cellIndex) {
+                const cell = pageData.rows[rowIndex].cells[cellIndex];
+                return {
+                    width: cell.width + 'px',
+                    height: pageData.rows[rowIndex].height + 'px', // Cells in a row have same height as row
+                };
+            },
+            getCellDimensions(pageId, rowIndex, cellIndex) {
+                const page = this.getPageById(pageId);
+                const row = page.rows[rowIndex];
+                const cell = row.cells[cellIndex];
+                return { width: cell.width, height: row.height };
+            },
+        }
+    }
+    </script>
+</body>
+</html>
