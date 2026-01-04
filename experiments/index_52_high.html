@@ -1,0 +1,770 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resizable Photo Album Grid + Cropping (GPT-5.2 High)</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+
+    <style>
+      :root {
+        --gutter: 12px;
+        --page-bg: #ffffff;
+        --album-bg: #2b2f36;
+        --app-bg: #0f1115;
+        --hint-fg: rgba(255, 255, 255, 0.75);
+        --hint-bg: rgba(0, 0, 0, 0.35);
+        --hint-border: rgba(255, 255, 255, 0.18);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 700px at 50% 10%, #1b2230 0%, var(--app-bg) 55%, #0b0d11 100%);
+        overflow: hidden; /* keep drag clean */
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+      }
+
+      /* Spread: maximize within viewport while keeping the full 2-page aspect (70:29) */
+      .spread {
+        width: 100%;
+        height: 100%;
+        max-width: 100vw;
+        max-height: calc(100vh - 36px);
+        background: linear-gradient(90deg, #20242c 0%, var(--album-bg) 50%, #20242c 100%);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        display: flex;
+        gap: 10px; /* spine gap between pages */
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .page {
+        flex: 1 1 0;
+        background: var(--page-bg);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Split.js expects flex parents for its panes */
+      .page-row {
+        display: flex;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .cell {
+        position: relative;
+        overflow: hidden;
+        background: #e9ecef;
+        isolation: isolate;
+        user-select: none;
+      }
+
+      .cell img {
+        width: auto;
+        height: auto;
+        max-width: none;
+        max-height: none;
+        display: block;
+        user-select: none;
+        -webkit-user-drag: none;
+        transform-origin: 0 0;
+        will-change: transform;
+        pointer-events: none; /* we handle drag on the cell */
+      }
+
+      .cell::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: 0;
+        border: 2px solid rgba(13, 110, 253, 0);
+        pointer-events: none;
+        transition: border-color 120ms ease;
+      }
+
+      .cell.is-editing::after {
+        border-color: rgba(13, 110, 253, 0.65);
+      }
+
+      .cell.is-editing {
+        cursor: grab;
+      }
+      .cell.is-editing.is-dragging {
+        cursor: grabbing;
+      }
+
+      .cell .cell-badge {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        z-index: 2;
+        display: none;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 12px;
+        line-height: 1.2;
+        letter-spacing: 0.2px;
+        color: rgba(255, 255, 255, 0.92);
+        background: rgba(0, 0, 0, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(8px);
+        pointer-events: none;
+      }
+      .cell.is-editing .cell-badge {
+        display: inline-flex;
+        gap: 6px;
+        align-items: center;
+      }
+
+      /* Gutters are the visible "white space" between cells/rows */
+      .gutter {
+        background-color: #ffffff;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+
+      /* Between rows (top/bottom) */
+      .gutter.gutter-vertical {
+        cursor: row-resize;
+      }
+
+      /* Between cells (left/middle/right) */
+      .gutter.gutter-horizontal {
+        cursor: col-resize;
+      }
+
+      /* Subtle affordance on hover (still reads as white space) */
+      .gutter:hover {
+        background-image: linear-gradient(
+          90deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+      .gutter.gutter-vertical:hover {
+        background-image: linear-gradient(
+          0deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+
+      .hint {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        max-width: min(820px, calc(100vw - 32px));
+        color: var(--hint-fg);
+        background: var(--hint-bg);
+        border: 1px solid var(--hint-border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        backdrop-filter: blur(8px);
+        font-size: 0.95rem;
+        line-height: 1.35;
+        z-index: 40;
+      }
+      .hint kbd {
+        background: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      .crop-toolbar {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 50;
+        width: min(920px, calc(100vw - 32px));
+        display: none;
+      }
+      .crop-toolbar.is-visible {
+        display: block;
+      }
+      .crop-toolbar .card {
+        background: rgba(20, 22, 28, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        backdrop-filter: blur(10px);
+        color: rgba(255, 255, 255, 0.92);
+      }
+      .crop-toolbar .form-range::-webkit-slider-thumb {
+        background: #0d6efd;
+      }
+      .crop-toolbar small {
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      /* Mobile: allow scrolling if necessary */
+      @media (max-width: 768px) {
+        body {
+          overflow: auto;
+        }
+        .app {
+          min-height: 100vh;
+          padding: 10px;
+        }
+        .spread {
+          max-height: none;
+        }
+        .crop-toolbar {
+          position: sticky;
+          left: auto;
+          bottom: auto;
+          transform: none;
+          margin: 10px auto 14px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <div class="spread" id="spread" aria-label="Two-page photo album spread">
+        <!-- Left Page -->
+        <section class="page" id="page-left" aria-label="Left page">
+          <div class="page-row" id="left-row-top">
+            <div class="cell" data-cell="1">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-009.jpg" alt="Photo 1" />
+            </div>
+            <div class="cell" data-cell="2">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-011.jpg" alt="Photo 2" />
+            </div>
+            <div class="cell" data-cell="3">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-014.jpg" alt="Photo 3" />
+            </div>
+          </div>
+          <div class="page-row" id="left-row-bottom">
+            <div class="cell" data-cell="4">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-015.jpg" alt="Photo 4" />
+            </div>
+            <div class="cell" data-cell="5">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-018.jpg" alt="Photo 5" />
+            </div>
+            <div class="cell" data-cell="6">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-023.jpg" alt="Photo 6" />
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Page -->
+        <section class="page" id="page-right" aria-label="Right page">
+          <div class="page-row" id="right-row-top">
+            <div class="cell" data-cell="7">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-027.jpg" alt="Photo 7" />
+            </div>
+            <div class="cell" data-cell="8">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-029.jpg" alt="Photo 8" />
+            </div>
+            <div class="cell" data-cell="9">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-034.jpg" alt="Photo 9" />
+            </div>
+          </div>
+          <div class="page-row" id="right-row-bottom">
+            <div class="cell" data-cell="10">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-037.jpg" alt="Photo 10" />
+            </div>
+            <div class="cell" data-cell="11">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-038.jpg" alt="Photo 11" />
+            </div>
+            <div class="cell" data-cell="12">
+              <span class="cell-badge">Cropping <span class="opacity-75">(drag + zoom)</span></span>
+              <img src="source/MaryShootsPeople-Klara-PieterJan-039.jpg" alt="Photo 12" />
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="crop-toolbar" id="cropToolbar" aria-live="polite">
+      <div class="card shadow-lg">
+        <div class="card-body py-3">
+          <div class="d-flex flex-wrap gap-3 align-items-center justify-content-between">
+            <div class="d-flex flex-column">
+              <div class="fw-semibold">
+                Crop cell <span class="badge text-bg-primary align-middle" id="activeCellBadge">–</span>
+              </div>
+              <small>
+                Drag image to reposition. Scroll / trackpad to zoom. <kbd>Esc</kbd> to exit.
+              </small>
+            </div>
+
+            <div class="d-flex flex-wrap gap-3 align-items-center flex-grow-1 justify-content-end">
+              <div class="d-flex align-items-center gap-2" style="min-width: min(460px, 100%)">
+                <span class="small text-nowrap">Zoom</span>
+                <input
+                  class="form-range"
+                  id="zoomRange"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="0"
+                  aria-label="Zoom slider"
+                />
+                <span class="small text-nowrap"><span id="zoomPct">100</span>%</span>
+              </div>
+              <div class="btn-group">
+                <button class="btn btn-sm btn-outline-light" type="button" id="btnReset">Reset</button>
+                <button class="btn btn-sm btn-primary" type="button" id="btnDone">Done</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hint">
+      Drag the <strong>white gutters</strong> to resize. Row gutter: <kbd>↑↓</kbd> resize. Column gutters: <kbd>←→</kbd>
+      resize.
+      <br />
+      <strong>Crop:</strong> click a cell to edit, then drag to reposition and use the zoom slider (or mouse wheel). No
+      whitespace is ever shown. Max zoom: <strong>5×</strong>.
+    </div>
+
+    <!-- Split.js CDN (lightweight helper for resizable gutters) -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+    <script>
+      (() => {
+        "use strict";
+
+        // Specs: default is "cover"; max zoom should be 5x.
+        const ZOOM_FACTOR_MAX = 5.0; // max zoom relative to the "cover" fit
+        const stateByCell = new WeakMap();
+
+        let activeCell = null;
+        let rafLayout = 0;
+
+        const toolbar = document.getElementById("cropToolbar");
+        const activeCellBadge = document.getElementById("activeCellBadge");
+        const zoomRange = document.getElementById("zoomRange");
+        const zoomPct = document.getElementById("zoomPct");
+        const btnReset = document.getElementById("btnReset");
+        const btnDone = document.getElementById("btnDone");
+
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+
+        function getCellRect(state) {
+          // Use bounding rect (not clientWidth/Height) to match actual pixel sizes during Split.js drags.
+          return state.cell.getBoundingClientRect();
+        }
+
+        function computeMinScale(state) {
+          if (!state.naturalW || !state.naturalH) return 1;
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          return Math.max(cw / state.naturalW, ch / state.naturalH);
+        }
+
+        function clampTranslate(state) {
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          const iw = state.naturalW * state.scale;
+          const ih = state.naturalH * state.scale;
+          // Ensure cover: image fully spans cell; translation range keeps image edges beyond cell edges.
+          const minTx = cw - iw;
+          const minTy = ch - ih;
+          state.tx = clamp(state.tx, minTx, 0);
+          state.ty = clamp(state.ty, minTy, 0);
+        }
+
+        function applyTransform(state) {
+          state.img.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+        }
+
+        function resetToCover(state) {
+          state.minScale = computeMinScale(state);
+          state.scale = state.minScale;
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          const iw = state.naturalW * state.scale;
+          const ih = state.naturalH * state.scale;
+          state.tx = (cw - iw) / 2;
+          state.ty = (ch - ih) / 2;
+          clampTranslate(state);
+          applyTransform(state);
+        }
+
+        function zoomAboutPoint(state, newScale, clientX, clientY) {
+          // Keep the point under (clientX, clientY) stationary during zoom.
+          const r = getCellRect(state);
+          const px = clamp(clientX - r.left, 0, r.width);
+          const py = clamp(clientY - r.top, 0, r.height);
+          const anchorX = (px - state.tx) / state.scale;
+          const anchorY = (py - state.ty) / state.scale;
+
+          state.scale = Math.max(state.minScale, newScale);
+          state.tx = px - anchorX * state.scale;
+          state.ty = py - anchorY * state.scale;
+          clampTranslate(state);
+          applyTransform(state);
+        }
+
+        function setActiveCell(cell) {
+          if (activeCell === cell) return;
+          if (activeCell) {
+            activeCell.classList.remove("is-editing", "is-dragging");
+          }
+          activeCell = cell;
+          if (!activeCell) {
+            toolbar.classList.remove("is-visible");
+            activeCellBadge.textContent = "–";
+            return;
+          }
+
+          const state = stateByCell.get(activeCell);
+          activeCell.classList.add("is-editing");
+
+          toolbar.classList.add("is-visible");
+          activeCellBadge.textContent = activeCell.getAttribute("data-cell") || "–";
+
+          // Sync slider to current scale.
+          syncToolbarFromState(state);
+        }
+
+        function syncToolbarFromState(state) {
+          // Map scale in [minScale, minScale*ZOOM_FACTOR_MAX] to slider [0..100]
+          const maxScale = state.minScale * ZOOM_FACTOR_MAX;
+          const t = (state.scale - state.minScale) / Math.max(1e-6, maxScale - state.minScale);
+          const v = clamp(Math.round(t * 100), 0, 100);
+          zoomRange.value = String(v);
+          zoomPct.textContent = String(Math.round((state.scale / state.minScale) * 100));
+        }
+
+        function setZoomFromSlider(state, sliderValue) {
+          const v = clamp(Number(sliderValue) || 0, 0, 100);
+          const maxScale = state.minScale * ZOOM_FACTOR_MAX;
+          const newScale = state.minScale + (maxScale - state.minScale) * (v / 100);
+          // Zoom around cell center for slider changes.
+          const r = getCellRect(state);
+          zoomAboutPoint(state, newScale, r.left + r.width / 2, r.top + r.height / 2);
+          syncToolbarFromState(state);
+        }
+
+        function scheduleLayoutUpdate() {
+          if (rafLayout) return;
+          rafLayout = window.requestAnimationFrame(() => {
+            rafLayout = 0;
+            for (const cell of document.querySelectorAll(".cell")) {
+              const state = stateByCell.get(cell);
+              if (!state || !state.naturalW || !state.naturalH) continue;
+
+              const newMin = computeMinScale(state);
+              const oldMin = state.minScale;
+              state.minScale = newMin;
+
+              // If the cell grew, minScale might increase; enforce it (no whitespace).
+              if (state.scale < state.minScale) {
+                // preserve center
+                const r = getCellRect(state);
+                zoomAboutPoint(state, state.minScale, r.left + r.width / 2, r.top + r.height / 2);
+              } else {
+                // keep scale, just clamp translation to new bounds
+                clampTranslate(state);
+                applyTransform(state);
+              }
+
+              // If this is the active cell, keep the UI accurate.
+              if (cell === activeCell) {
+                if (Math.abs(newMin - oldMin) > 1e-6) syncToolbarFromState(state);
+              }
+            }
+          });
+        }
+
+        function initCropCells() {
+          const cells = document.querySelectorAll(".cell");
+          for (const cell of cells) {
+            const img = cell.querySelector("img");
+            const state = {
+              cell,
+              img,
+              naturalW: 0,
+              naturalH: 0,
+              minScale: 1,
+              scale: 1,
+              tx: 0,
+              ty: 0,
+              drag: null,
+            };
+            stateByCell.set(cell, state);
+
+            const onImgReady = () => {
+              state.naturalW = img.naturalWidth || 1;
+              state.naturalH = img.naturalHeight || 1;
+              resetToCover(state);
+              scheduleLayoutUpdate();
+            };
+            img.addEventListener("load", onImgReady, { passive: true });
+            if (img.complete) onImgReady();
+
+            img.addEventListener(
+              "error",
+              () => {
+                // Fallback to a deterministic placeholder if local files aren't available in the current context.
+                const n = cell.getAttribute("data-cell") || "x";
+                img.src = `https://picsum.photos/seed/gpt52-high-${n}/1600/1200`;
+              },
+              { passive: true }
+            );
+
+            // Activate by clicking.
+            cell.addEventListener(
+              "mousedown",
+              (e) => {
+                // Only left button.
+                if (e.button !== 0) return;
+
+                // If the user clicked while another cell is active, switch immediately.
+                if (activeCell !== cell) setActiveCell(cell);
+                if (activeCell !== cell) return;
+
+                // Start drag-to-pan only in editing mode.
+                const s = stateByCell.get(cell);
+                if (!s || !cell.classList.contains("is-editing")) return;
+
+                cell.classList.add("is-dragging");
+                s.drag = {
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  startTx: s.tx,
+                  startTy: s.ty,
+                };
+                e.preventDefault();
+              },
+              { passive: false }
+            );
+
+            cell.addEventListener(
+              "mousemove",
+              (e) => {
+                const s = stateByCell.get(cell);
+                if (!s || !s.drag) return;
+                const dx = e.clientX - s.drag.startX;
+                const dy = e.clientY - s.drag.startY;
+                s.tx = s.drag.startTx + dx;
+                s.ty = s.drag.startTy + dy;
+                clampTranslate(s);
+                applyTransform(s);
+                e.preventDefault();
+              },
+              { passive: false }
+            );
+
+            const endDrag = () => {
+              const s = stateByCell.get(cell);
+              if (!s || !s.drag) return;
+              cell.classList.remove("is-dragging");
+              s.drag = null;
+            };
+            cell.addEventListener("mouseup", endDrag, { passive: true });
+            cell.addEventListener("mouseleave", endDrag, { passive: true });
+
+            // Double-click resets.
+            cell.addEventListener("dblclick", () => {
+              const s = stateByCell.get(cell);
+              if (!s) return;
+              setActiveCell(cell);
+              resetToCover(s);
+              syncToolbarFromState(s);
+            });
+          }
+
+          // Click outside exits.
+          document.addEventListener("mousedown", (e) => {
+            const t = e.target;
+            if (toolbar.contains(t)) return;
+            // Don't exit crop mode when interacting with Split.js gutters.
+            if (t.closest && t.closest(".gutter")) return;
+            if (t.closest && t.closest(".cell")) return;
+            if (activeCell) setActiveCell(null);
+          });
+
+          // Escape exits.
+          document.addEventListener("keydown", (e) => {
+            if (e.key === "Escape" && activeCell) setActiveCell(null);
+          });
+
+          // Wheel zoom for active cell.
+          document.addEventListener(
+            "wheel",
+            (e) => {
+              if (!activeCell) return;
+              // ignore wheel when hovering toolbar
+              if (toolbar.contains(e.target)) return;
+              const s = stateByCell.get(activeCell);
+              if (!s) return;
+              const delta = e.deltaY;
+              if (!Number.isFinite(delta)) return;
+
+              const zoomStep = Math.exp(-delta * 0.0012); // smooth
+              const maxScale = s.minScale * ZOOM_FACTOR_MAX;
+              const next = clamp(s.scale * zoomStep, s.minScale, maxScale);
+              zoomAboutPoint(s, next, e.clientX, e.clientY);
+              syncToolbarFromState(s);
+              e.preventDefault();
+            },
+            { passive: false }
+          );
+        }
+
+        function initToolbar() {
+          zoomRange.addEventListener("input", () => {
+            if (!activeCell) return;
+            const s = stateByCell.get(activeCell);
+            if (!s) return;
+            setZoomFromSlider(s, zoomRange.value);
+          });
+
+          btnReset.addEventListener("click", () => {
+            if (!activeCell) return;
+            const s = stateByCell.get(activeCell);
+            if (!s) return;
+            resetToCover(s);
+            syncToolbarFromState(s);
+          });
+
+          btnDone.addEventListener("click", () => {
+            if (activeCell) setActiveCell(null);
+          });
+        }
+
+        function initSplits() {
+          const GUTTER_SIZE = 12; // same horizontal/vertical
+
+          const commonOptions = {
+            gutterSize: GUTTER_SIZE,
+            snapOffset: 0,
+            // Split.js will clamp with minSize; we also keep it modest so small viewports still work.
+            onDrag: scheduleLayoutUpdate,
+            onDragEnd: scheduleLayoutUpdate,
+          };
+
+          // Horizontal gutter between the two rows on each page (direction: vertical)
+          Split(["#left-row-top", "#left-row-bottom"], {
+            ...commonOptions,
+            direction: "vertical",
+            sizes: [50, 50],
+            minSize: 90,
+            cursor: "row-resize",
+          });
+
+          Split(["#right-row-top", "#right-row-bottom"], {
+            ...commonOptions,
+            direction: "vertical",
+            sizes: [50, 50],
+            minSize: 90,
+            cursor: "row-resize",
+          });
+
+          // Vertical gutters between cells within each row (direction: horizontal)
+          const rowSelectors = ["#left-row-top", "#left-row-bottom", "#right-row-top", "#right-row-bottom"];
+          for (const rowSel of rowSelectors) {
+            const cells = document.querySelectorAll(`${rowSel} .cell`);
+            Split(cells, {
+              ...commonOptions,
+              direction: "horizontal",
+              sizes: [33.33, 33.34, 33.33],
+              minSize: 70,
+              cursor: "col-resize",
+            });
+          }
+        }
+
+        function initSpreadFit() {
+          const spread = document.getElementById("spread");
+          const updateSpreadFit = () => {
+            const margin = 36; // matches .app padding sum (18px top/bottom)
+            const availW = Math.max(320, window.innerWidth - margin);
+            const availH = Math.max(320, window.innerHeight - margin);
+
+            // Must match CSS: .spread { padding: 14px; gap: 10px; }
+            const PAD = 14;
+            const GAP = 10;
+            const PAGE_W = 35;
+            const PAGE_H = 29;
+
+            const heightForWidth = (w) => {
+              const innerW = Math.max(1, w - 2 * PAD - GAP);
+              const pageW = innerW / 2;
+              const pageH = pageW * (PAGE_H / PAGE_W);
+              return 2 * PAD + pageH;
+            };
+
+            const widthForHeight = (h) => {
+              const innerH = Math.max(1, h - 2 * PAD);
+              const pageW = innerH * (PAGE_W / PAGE_H);
+              const innerW = 2 * pageW;
+              return 2 * PAD + GAP + innerW;
+            };
+
+            let w = availW;
+            let h = heightForWidth(w);
+            if (h > availH) {
+              h = availH;
+              w = widthForHeight(h);
+            }
+
+            spread.style.width = `${Math.floor(w)}px`;
+            spread.style.height = `${Math.floor(h)}px`;
+            scheduleLayoutUpdate();
+          };
+
+          updateSpreadFit();
+          window.addEventListener("resize", updateSpreadFit, { passive: true });
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          initSplits();
+          initSpreadFit();
+          initCropCells();
+          initToolbar();
+          scheduleLayoutUpdate();
+        });
+      })();
+    </script>
+  </body>
+</html>
+
+

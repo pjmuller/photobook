@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album V3 - CSS Background Approach</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        
+        body {
+            margin: 0;
+            padding: 20px;
+            background: radial-gradient(circle at center, #1a1a2e, #16213e);
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+        }
+        
+        .album-container {
+            width: 100%;
+            height: 80vh;
+            display: flex;
+            gap: 15px;
+            background: linear-gradient(145deg, #0f3460, #16537e);
+            box-shadow: 
+                0 20px 60px rgba(0,0,0,0.4),
+                inset 0 1px 0 rgba(255,255,255,0.1);
+            border-radius: 16px;
+            overflow: hidden;
+            padding: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .page {
+            flex: 1;
+            aspect-ratio: 35/29;
+            display: flex;
+            flex-direction: column;
+            background: 
+                linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%),
+                rgba(255,255,255,0.02);
+            border-radius: 12px;
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+        
+        .page-row {
+            flex: 1;
+            display: flex;
+        }
+        
+        .photo-cell {
+            flex: 1;
+            position: relative;
+            border: 2px solid rgba(255,255,255,0.1);
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            cursor: crosshair;
+        }
+        
+        .photo-cell:hover {
+            border-color: rgba(52, 152, 219, 0.6);
+            box-shadow: 
+                0 0 20px rgba(52, 152, 219, 0.3),
+                inset 0 0 20px rgba(52, 152, 219, 0.1);
+        }
+        
+        .photo-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(
+                45deg,
+                rgba(0,0,0,0.1) 0%,
+                transparent 50%,
+                rgba(255,255,255,0.05) 100%
+            );
+            pointer-events: none;
+        }
+        
+        .photo-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(
+                to top,
+                rgba(0,0,0,0.8) 0%,
+                rgba(0,0,0,0.6) 70%,
+                transparent 100%
+            );
+            padding: 15px 10px 10px;
+            opacity: 0;
+            transform: translateY(100%);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(8px);
+        }
+        
+        .photo-cell:hover .photo-controls {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-icon {
+            width: 16px;
+            height: 16px;
+            fill: #3498db;
+            flex-shrink: 0;
+        }
+        
+        .control-slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+        
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #3498db, #2980b9);
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: transform 0.2s ease;
+        }
+        
+        .control-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+        
+        .control-slider::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #3498db, #2980b9);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 6px;
+        }
+        
+        .action-btn {
+            background: linear-gradient(145deg, #e74c3c, #c0392b);
+            color: white;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        
+        .action-btn.fit-btn {
+            background: linear-gradient(145deg, #27ae60, #229954);
+        }
+        
+        .gutter {
+            background: linear-gradient(
+                135deg,
+                rgba(52, 152, 219, 0.3) 0%,
+                rgba(41, 128, 185, 0.5) 50%,
+                rgba(52, 152, 219, 0.3) 100%
+            );
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+        }
+        
+        .gutter::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 30px;
+            height: 4px;
+            background: rgba(255,255,255,0.4);
+            border-radius: 2px;
+        }
+        
+        .gutter.gutter-horizontal {
+            height: 10px;
+            cursor: row-resize;
+        }
+        
+        .gutter.gutter-horizontal::before {
+            width: 30px;
+            height: 4px;
+        }
+        
+        .gutter.gutter-vertical {
+            width: 10px;
+            cursor: col-resize;
+        }
+        
+        .gutter.gutter-vertical::before {
+            width: 4px;
+            height: 30px;
+        }
+        
+        .split {
+            box-sizing: border-box;
+        }
+        
+        .loading-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            background: rgba(0,0,0,0.1);
+        }
+        
+        .loading-spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .photo-info {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 10px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(4px);
+        }
+        
+        .photo-cell:hover .photo-info {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="text-center mb-4 text-white">Photo Album V3 - CSS Background Approach</h1>
+        
+        <div class="album-container" id="albumContainer">
+            <!-- Left Page -->
+            <div class="page" id="leftPage">
+                <div class="page-row" id="leftRow1">
+                    <div class="photo-cell" data-cell="0" data-src="https://picsum.photos/800/600?random=1">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="1" data-src="https://picsum.photos/800/600?random=2">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="2" data-src="https://picsum.photos/800/600?random=3">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="page-row" id="leftRow2">
+                    <div class="photo-cell" data-cell="3" data-src="https://picsum.photos/800/600?random=4">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="4" data-src="https://picsum.photos/800/600?random=5">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c-.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="5" data-src="https://picsum.photos/800/600?random=6">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Page -->
+            <div class="page" id="rightPage">
+                <div class="page-row" id="rightRow1">
+                    <div class="photo-cell" data-cell="6" data-src="https://picsum.photos/800/600?random=7">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="7" data-src="https://picsum.photos/800/600?random=8">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="8" data-src="https://picsum.photos/800/600?random=9">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="page-row" id="rightRow2">
+                    <div class="photo-cell" data-cell="9" data-src="https://picsum.photos/800/600?random=10">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="10" data-src="https://picsum.photos/800/600?random=11">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="11" data-src="https://picsum.photos/800/600?random=12">
+                        <div class="loading-state">
+                            <div class="loading-spinner"></div>
+                            Loading...
+                        </div>
+                        <div class="photo-overlay"></div>
+                        <div class="photo-info">100%</div>
+                        <div class="photo-controls">
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M15.85 3.85L17.3 5.3l-2.18 2.16c-.39.39-.39 1.03 0 1.42.39.39 1.03.39 1.42 0L18.7 6.7l1.45 1.45c.31.31.85.09.85-.35V3c0-.55-.45-1-1-1h-4.8c-.44 0-.66.54-.35.85zM3 20c0 .55.45 1 1 1h4.8c.44 0 .66-.54.35-.85L7.7 18.7l2.18-2.16c.39-.39.39-1.03 0-1.42-.39-.39-1.03-.39-1.42 0L6.3 17.3l-1.45-1.45c-.31-.31-.85-.09-.85.35V20z"/>
+                                </svg>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="250" value="100">
+                            </div>
+                            <div class="control-row">
+                                <svg class="control-icon" viewBox="0 0 24 24">
+                                    <path d="M13 7h-2v4H7v2h4v4h2v-4h4v-2h-4V7z"/>
+                                </svg>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                            <div class="action-buttons">
+                                <button class="action-btn fit-btn">Fit</button>
+                                <button class="action-btn">Reset</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class BackgroundPhotoAlbum {
+            constructor() {
+                this.cells = new Map();
+                this.imageCache = new Map();
+                this.init();
+            }
+            
+            init() {
+                this.setupSplitters();
+                this.setupPhotoCells();
+                this.preloadImages();
+            }
+            
+            setupSplitters() {
+                // Horizontal splitters for each page
+                Split(['#leftRow1', '#leftRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 10,
+                    cursor: 'row-resize'
+                });
+                
+                Split(['#rightRow1', '#rightRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 10,
+                    cursor: 'row-resize'
+                });
+                
+                // Vertical splitters for each row
+                setTimeout(() => {
+                    const leftRow1Cells = document.querySelectorAll('#leftRow1 .photo-cell');
+                    const leftRow2Cells = document.querySelectorAll('#leftRow2 .photo-cell');
+                    const rightRow1Cells = document.querySelectorAll('#rightRow1 .photo-cell');
+                    const rightRow2Cells = document.querySelectorAll('#rightRow2 .photo-cell');
+                    
+                    Split(Array.from(leftRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 10,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(leftRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 10,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(rightRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 10,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(rightRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 10,
+                        cursor: 'col-resize'
+                    });
+                }, 100);
+            }
+            
+            preloadImages() {
+                document.querySelectorAll('.photo-cell').forEach((cell, index) => {
+                    const src = cell.dataset.src;
+                    const img = new Image();
+                    
+                    img.onload = () => {
+                        this.imageCache.set(index, img);
+                        const loading = cell.querySelector('.loading-state');
+                        loading.style.display = 'none';
+                        this.initializePhotoCell(cell, index);
+                    };
+                    
+                    img.onerror = () => {
+                        const loading = cell.querySelector('.loading-state');
+                        loading.innerHTML = '<div class="loading-spinner"></div>Failed to load';
+                        loading.style.color = '#e74c3c';
+                    };
+                    
+                    img.crossOrigin = 'anonymous';
+                    img.src = src;
+                });
+            }
+            
+            initializePhotoCell(cell, index) {
+                const cellData = {
+                    cell,
+                    zoom: 100,
+                    panX: 0,
+                    panY: 0,
+                    baseSize: 100,
+                    isDragging: false,
+                    lastX: 0,
+                    lastY: 0
+                };
+                
+                this.cells.set(index, cellData);
+                this.updateBackgroundImage(cellData);
+            }
+            
+            setupPhotoCells() {
+                document.querySelectorAll('.photo-cell').forEach((cell, index) => {
+                    const zoomSlider = cell.querySelector('.zoom-slider');
+                    const panXSlider = cell.querySelector('.pan-x');
+                    const panYSlider = cell.querySelector('.pan-y');
+                    const resetBtn = cell.querySelector('.action-btn:not(.fit-btn)');
+                    const fitBtn = cell.querySelector('.fit-btn');
+                    const photoInfo = cell.querySelector('.photo-info');
+                    
+                    // Wait for image to load before setting up controls
+                    const checkInterval = setInterval(() => {
+                        if (this.cells.has(index)) {
+                            clearInterval(checkInterval);
+                            const cellData = this.cells.get(index);
+                            
+                            // Zoom slider
+                            zoomSlider.addEventListener('input', (e) => {
+                                cellData.zoom = parseInt(e.target.value);
+                                photoInfo.textContent = cellData.zoom + '%';
+                                this.updateBackgroundImage(cellData);
+                            });
+                            
+                            // Pan sliders
+                            panXSlider.addEventListener('input', (e) => {
+                                cellData.panX = parseInt(e.target.value);
+                                this.updateBackgroundImage(cellData);
+                            });
+                            
+                            panYSlider.addEventListener('input', (e) => {
+                                cellData.panY = parseInt(e.target.value);
+                                this.updateBackgroundImage(cellData);
+                            });
+                            
+                            // Reset button
+                            resetBtn.addEventListener('click', () => {
+                                cellData.zoom = 100;
+                                cellData.panX = 0;
+                                cellData.panY = 0;
+                                zoomSlider.value = 100;
+                                panXSlider.value = 0;
+                                panYSlider.value = 0;
+                                photoInfo.textContent = '100%';
+                                this.updateBackgroundImage(cellData);
+                            });
+                            
+                            // Fit button
+                            fitBtn.addEventListener('click', () => {
+                                this.fitImageToCell(cellData, zoomSlider, panXSlider, panYSlider, photoInfo);
+                            });
+                            
+                            // Mouse drag for panning
+                            cell.addEventListener('mousedown', (e) => {
+                                if (e.target.closest('.photo-controls')) return;
+                                cellData.isDragging = true;
+                                cellData.lastX = e.clientX;
+                                cellData.lastY = e.clientY;
+                                e.preventDefault();
+                            });
+                            
+                            cell.addEventListener('mousemove', (e) => {
+                                if (!cellData.isDragging) return;
+                                
+                                const deltaX = e.clientX - cellData.lastX;
+                                const deltaY = e.clientY - cellData.lastY;
+                                
+                                // Convert mouse movement to pan values
+                                const sensitivity = 0.5;
+                                cellData.panX = Math.max(-100, Math.min(100, cellData.panX + deltaX * sensitivity));
+                                cellData.panY = Math.max(-100, Math.min(100, cellData.panY + deltaY * sensitivity));
+                                
+                                cellData.lastX = e.clientX;
+                                cellData.lastY = e.clientY;
+                                
+                                // Update sliders
+                                panXSlider.value = cellData.panX;
+                                panYSlider.value = cellData.panY;
+                                
+                                this.updateBackgroundImage(cellData);
+                            });
+                            
+                            cell.addEventListener('mouseup', () => {
+                                cellData.isDragging = false;
+                            });
+                            
+                            cell.addEventListener('mouseleave', () => {
+                                cellData.isDragging = false;
+                            });
+                            
+                            // Touch support
+                            cell.addEventListener('touchstart', (e) => {
+                                if (e.target.closest('.photo-controls')) return;
+                                const touch = e.touches[0];
+                                cellData.isDragging = true;
+                                cellData.lastX = touch.clientX;
+                                cellData.lastY = touch.clientY;
+                                e.preventDefault();
+                            });
+                            
+                            cell.addEventListener('touchmove', (e) => {
+                                if (!cellData.isDragging) return;
+                                
+                                const touch = e.touches[0];
+                                const deltaX = touch.clientX - cellData.lastX;
+                                const deltaY = touch.clientY - cellData.lastY;
+                                
+                                const sensitivity = 0.5;
+                                cellData.panX = Math.max(-100, Math.min(100, cellData.panX + deltaX * sensitivity));
+                                cellData.panY = Math.max(-100, Math.min(100, cellData.panY + deltaY * sensitivity));
+                                
+                                cellData.lastX = touch.clientX;
+                                cellData.lastY = touch.clientY;
+                                
+                                panXSlider.value = cellData.panX;
+                                panYSlider.value = cellData.panY;
+                                
+                                this.updateBackgroundImage(cellData);
+                                e.preventDefault();
+                            });
+                            
+                            cell.addEventListener('touchend', () => {
+                                cellData.isDragging = false;
+                            });
+                            
+                            // Mouse wheel zoom
+                            cell.addEventListener('wheel', (e) => {
+                                if (e.target.closest('.photo-controls')) return;
+                                e.preventDefault();
+                                
+                                const delta = e.deltaY > 0 ? -10 : 10;
+                                const newZoom = Math.max(50, Math.min(250, cellData.zoom + delta));
+                                cellData.zoom = newZoom;
+                                zoomSlider.value = newZoom;
+                                photoInfo.textContent = newZoom + '%';
+                                this.updateBackgroundImage(cellData);
+                            });
+                        }
+                    }, 100);
+                });
+            }
+            
+            updateBackgroundImage(cellData) {
+                const { cell, zoom, panX, panY } = cellData;
+                
+                // Calculate background size based on zoom
+                const size = zoom;
+                
+                // Calculate background position based on pan
+                // Convert -100 to 100 range to 0% to 100% range
+                const posX = 50 + (panX * 0.5);
+                const posY = 50 + (panY * 0.5);
+                
+                cell.style.backgroundSize = `${size}%`;
+                cell.style.backgroundPosition = `${posX}% ${posY}%`;
+                cell.style.backgroundImage = `url(${cell.dataset.src})`;
+            }
+            
+            fitImageToCell(cellData, zoomSlider, panXSlider, panYSlider, photoInfo) {
+                const { cell } = cellData;
+                const index = parseInt(cell.dataset.cell);
+                const img = this.imageCache.get(index);
+                
+                if (!img) return;
+                
+                const cellRect = cell.getBoundingClientRect();
+                const cellAspect = cellRect.width / cellRect.height;
+                const imgAspect = img.width / img.height;
+                
+                // Calculate zoom to fit image in cell
+                let zoom;
+                if (cellAspect > imgAspect) {
+                    // Cell is wider, fit to height
+                    zoom = 100;
+                } else {
+                    // Cell is taller, fit to width
+                    zoom = (cellAspect / imgAspect) * 100;
+                }
+                
+                cellData.zoom = Math.max(50, Math.min(250, zoom));
+                cellData.panX = 0;
+                cellData.panY = 0;
+                
+                zoomSlider.value = cellData.zoom;
+                panXSlider.value = 0;
+                panYSlider.value = 0;
+                photoInfo.textContent = Math.round(cellData.zoom) + '%';
+                
+                this.updateBackgroundImage(cellData);
+            }
+        }
+        
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new BackgroundPhotoAlbum();
+        });
+    </script>
+</body>
+</html>

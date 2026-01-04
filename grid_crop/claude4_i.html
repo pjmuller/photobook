@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album V1 - CSS Transform Approach</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #f5f5f5;
+            font-family: Arial, sans-serif;
+        }
+        
+        .album-container {
+            width: 100%;
+            height: 80vh;
+            display: flex;
+            gap: 20px;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .page {
+            flex: 1;
+            aspect-ratio: 35/29;
+            display: flex;
+            flex-direction: column;
+            background: white;
+        }
+        
+        .page-row {
+            flex: 1;
+            display: flex;
+        }
+        
+        .photo-cell {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #ddd;
+            cursor: grab;
+        }
+        
+        .photo-cell:active {
+            cursor: grabbing;
+        }
+        
+        .photo-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        
+        .photo-img {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s ease-out;
+            user-select: none;
+            pointer-events: none;
+        }
+        
+        .photo-controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px;
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 10;
+        }
+        
+        .photo-cell:hover .photo-controls {
+            opacity: 1;
+        }
+        
+        .zoom-slider {
+            width: 100%;
+            margin: 0;
+        }
+        
+        .zoom-label {
+            color: white;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+        
+        .gutter {
+            background-color: #ddd;
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><circle cx="5" cy="5" r="2" fill="%23999"/></svg>');
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        
+        .gutter.gutter-horizontal {
+            height: 8px;
+            cursor: row-resize;
+        }
+        
+        .gutter.gutter-vertical {
+            width: 8px;
+            cursor: col-resize;
+        }
+        
+        .split {
+            box-sizing: border-box;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="text-center mb-4">Photo Album V1 - CSS Transform Approach</h1>
+        
+        <div class="album-container" id="albumContainer">
+            <!-- Left Page -->
+            <div class="page" id="leftPage">
+                <div class="page-row" id="leftRow1">
+                    <div class="photo-cell" data-cell="0">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=1" alt="Photo 1">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="1">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=2" alt="Photo 2">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="2">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=3" alt="Photo 3">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                </div>
+                <div class="page-row" id="leftRow2">
+                    <div class="photo-cell" data-cell="3">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=4" alt="Photo 4">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="4">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=5" alt="Photo 5">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="5">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=6" alt="Photo 6">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Page -->
+            <div class="page" id="rightPage">
+                <div class="page-row" id="rightRow1">
+                    <div class="photo-cell" data-cell="6">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=7" alt="Photo 7">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="7">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=8" alt="Photo 8">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="8">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=9" alt="Photo 9">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                </div>
+                <div class="page-row" id="rightRow2">
+                    <div class="photo-cell" data-cell="9">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=10" alt="Photo 10">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="10">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=11" alt="Photo 11">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                    <div class="photo-cell" data-cell="11">
+                        <div class="photo-container">
+                            <img class="photo-img" src="https://picsum.photos/400/300?random=12" alt="Photo 12">
+                        </div>
+                        <div class="photo-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="100" max="300" value="150">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PhotoAlbum {
+            constructor() {
+                this.cells = new Map();
+                this.init();
+            }
+            
+            init() {
+                this.setupSplitters();
+                this.setupPhotoCells();
+            }
+            
+            setupSplitters() {
+                // Horizontal splitters for each page
+                Split(['#leftRow1', '#leftRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 8,
+                    cursor: 'row-resize'
+                });
+                
+                Split(['#rightRow1', '#rightRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 8,
+                    cursor: 'row-resize'
+                });
+                
+                // Vertical splitters for each row
+                setTimeout(() => {
+                    const leftRow1Cells = document.querySelectorAll('#leftRow1 .photo-cell');
+                    const leftRow2Cells = document.querySelectorAll('#leftRow2 .photo-cell');
+                    const rightRow1Cells = document.querySelectorAll('#rightRow1 .photo-cell');
+                    const rightRow2Cells = document.querySelectorAll('#rightRow2 .photo-cell');
+                    
+                    Split(Array.from(leftRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 8,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(leftRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 8,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(rightRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 8,
+                        cursor: 'col-resize'
+                    });
+                    
+                    Split(Array.from(rightRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 8,
+                        cursor: 'col-resize'
+                    });
+                }, 100);
+            }
+            
+            setupPhotoCells() {
+                document.querySelectorAll('.photo-cell').forEach((cell, index) => {
+                    const img = cell.querySelector('.photo-img');
+                    const slider = cell.querySelector('.zoom-slider');
+                    const container = cell.querySelector('.photo-container');
+                    
+                    const cellData = {
+                        img,
+                        slider,
+                        container,
+                        scale: 1.5,
+                        offsetX: 0,
+                        offsetY: 0,
+                        isDragging: false,
+                        lastX: 0,
+                        lastY: 0
+                    };
+                    
+                    this.cells.set(index, cellData);
+                    
+                    // Initialize image
+                    img.onload = () => {
+                        this.updateImageTransform(cellData);
+                    };
+                    
+                    // Zoom slider
+                    slider.addEventListener('input', (e) => {
+                        cellData.scale = e.target.value / 100;
+                        this.updateImageTransform(cellData);
+                    });
+                    
+                    // Mouse drag for panning
+                    container.addEventListener('mousedown', (e) => {
+                        cellData.isDragging = true;
+                        cellData.lastX = e.clientX;
+                        cellData.lastY = e.clientY;
+                        e.preventDefault();
+                    });
+                    
+                    container.addEventListener('mousemove', (e) => {
+                        if (!cellData.isDragging) return;
+                        
+                        const deltaX = e.clientX - cellData.lastX;
+                        const deltaY = e.clientY - cellData.lastY;
+                        
+                        cellData.offsetX += deltaX;
+                        cellData.offsetY += deltaY;
+                        
+                        cellData.lastX = e.clientX;
+                        cellData.lastY = e.clientY;
+                        
+                        this.updateImageTransform(cellData);
+                    });
+                    
+                    container.addEventListener('mouseup', () => {
+                        cellData.isDragging = false;
+                    });
+                    
+                    container.addEventListener('mouseleave', () => {
+                        cellData.isDragging = false;
+                    });
+                    
+                    // Touch support
+                    container.addEventListener('touchstart', (e) => {
+                        const touch = e.touches[0];
+                        cellData.isDragging = true;
+                        cellData.lastX = touch.clientX;
+                        cellData.lastY = touch.clientY;
+                        e.preventDefault();
+                    });
+                    
+                    container.addEventListener('touchmove', (e) => {
+                        if (!cellData.isDragging) return;
+                        
+                        const touch = e.touches[0];
+                        const deltaX = touch.clientX - cellData.lastX;
+                        const deltaY = touch.clientY - cellData.lastY;
+                        
+                        cellData.offsetX += deltaX;
+                        cellData.offsetY += deltaY;
+                        
+                        cellData.lastX = touch.clientX;
+                        cellData.lastY = touch.clientY;
+                        
+                        this.updateImageTransform(cellData);
+                        e.preventDefault();
+                    });
+                    
+                    container.addEventListener('touchend', () => {
+                        cellData.isDragging = false;
+                    });
+                });
+            }
+            
+            updateImageTransform(cellData) {
+                const { img, container, scale, offsetX, offsetY } = cellData;
+                const containerRect = container.getBoundingClientRect();
+                
+                // Calculate the size needed to fill the container
+                const containerAspect = containerRect.width / containerRect.height;
+                const imgAspect = img.naturalWidth / img.naturalHeight;
+                
+                let imgWidth, imgHeight;
+                
+                if (containerAspect > imgAspect) {
+                    // Container is wider, fit to width
+                    imgWidth = containerRect.width * scale;
+                    imgHeight = (imgWidth / imgAspect);
+                } else {
+                    // Container is taller, fit to height
+                    imgHeight = containerRect.height * scale;
+                    imgWidth = imgHeight * imgAspect;
+                }
+                
+                // Limit panning to keep image covering the container
+                const maxOffsetX = Math.max(0, (imgWidth - containerRect.width) / 2);
+                const maxOffsetY = Math.max(0, (imgHeight - containerRect.height) / 2);
+                
+                const clampedOffsetX = Math.max(-maxOffsetX, Math.min(maxOffsetX, offsetX));
+                const clampedOffsetY = Math.max(-maxOffsetY, Math.min(maxOffsetY, offsetY));
+                
+                cellData.offsetX = clampedOffsetX;
+                cellData.offsetY = clampedOffsetY;
+                
+                img.style.width = `${imgWidth}px`;
+                img.style.height = `${imgHeight}px`;
+                img.style.transform = `translate(-50%, -50%) translate(${clampedOffsetX}px, ${clampedOffsetY}px)`;
+            }
+        }
+        
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new PhotoAlbum();
+        });
+    </script>
+</body>
+</html>

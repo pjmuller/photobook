@@ -1,0 +1,613 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Two-Page Photo Album with Resizable Gutters and Cropping</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Bootstrap 5 CDN -->
+  <link
+    href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+    rel="stylesheet"
+    integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+    crossorigin="anonymous"
+  />
+
+  <!-- Split.js -->
+  <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #f3f4f6;
+    }
+
+    .album-wrapper {
+      max-width: 95vw;
+      margin: 2rem auto;
+    }
+
+    /* Maintain two-page aspect 70:29 overall since each page is 35:29 side-by-side */
+    .spread {
+      width: 100%;
+      aspect-ratio: 70 / 29;
+      background: #fff;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .spread-title {
+      padding: .5rem .75rem;
+      border-bottom: 1px solid #e5e7eb;
+      font-weight: 600;
+      color: #374151;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+
+    .spread-body {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 0; /* important for nested flex/overflow */
+      min-width: 0;
+    }
+
+    .page {
+      position: relative;
+      overflow: hidden;
+      background: #fafafa;
+    }
+
+    /* The two rows on a page are split vertically (stacked top/bottom) */
+    .page-rows {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    /* Each row is split horizontally into 3 columns (cells) */
+    .row-cells {
+      display: flex;
+      min-height: 0;
+      min-width: 0;
+      height: 100%;
+    }
+
+    /* Split gutters */
+    .gutter {
+      background: #e5e7eb;
+      flex: 0 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+    .gutter.gutter-vertical {
+      cursor: row-resize;
+      width: 100%;
+      height: 6px;
+    }
+    .gutter.gutter-horizontal {
+      cursor: col-resize;
+      width: 6px;
+      height: 100%;
+    }
+    .gutter:hover {
+      background: #d1d5db;
+    }
+
+    /* Cell styling */
+    .cell {
+      position: relative;
+      overflow: hidden;
+      background: #ddd;
+      min-width: 0;
+      min-height: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cell-inner {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #111;
+      touch-action: none; /* smooth drag on touch */
+    }
+
+    /* Image element used for cropping */
+    .cell-inner img {
+      position: absolute;
+      top: var(--img-y, 0);
+      left: var(--img-x, 0);
+      transform: translate(var(--img-translate-x, 0), var(--img-translate-y, 0)) scale(var(--img-scale, 1));
+      transform-origin: top left;
+      user-select: none;
+      -webkit-user-drag: none;
+      will-change: transform;
+    }
+
+    /* Controls overlay */
+    .controls {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      background: rgba(255,255,255,0.85);
+      border-radius: 10px;
+      padding: .4rem .6rem;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+      opacity: 0;
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .cell:hover .controls,
+    .cell:focus-within .controls,
+    .cell.dragging .controls {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .zoom-range {
+      flex: 1;
+      accent-color: #2563eb;
+      height: 4px;
+    }
+
+    .hint {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(17,24,39,0.7);
+      color: #fff;
+      padding: .2rem .4rem;
+      font-size: .75rem;
+      border-radius: 6px;
+      opacity: 0;
+      transition: opacity .2s ease;
+      pointer-events: none;
+    }
+    .cell:hover .hint,
+    .cell.dragging .hint {
+      opacity: 1;
+    }
+
+    /* Divider between two pages */
+    .page-divider {
+      width: 2px;
+      background: #eee;
+      height: 100%;
+    }
+
+    /* Toolbar above */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+    }
+    .toolbar .form-range {
+      width: 180px;
+    }
+
+    /* Ensure sliders and inputs are nicely visible on dark images */
+    .btn-tool {
+      border-radius: 8px !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="album-wrapper">
+    <div class="toolbar mb-2">
+      <div class="d-flex align-items-center gap-2">
+        <span class="badge text-bg-primary">Two-Page Photo Album</span>
+        <small class="text-muted">Drag gutters to resize rows/columns. Scroll or use slider to zoom. Drag image to pan.</small>
+      </div>
+      <div class="d-flex align-items-center gap-2">
+        <button id="resetAll" class="btn btn-sm btn-outline-secondary btn-tool">Reset zoom & pan</button>
+        <button id="shuffleAll" class="btn btn-sm btn-outline-primary btn-tool">Shuffle images</button>
+      </div>
+    </div>
+
+    <div class="spread">
+      <div class="spread-title">
+        <span>Album Spread</span>
+        <span class="text-muted">Left and Right pages (35:29 each)</span>
+      </div>
+
+      <div class="spread-body">
+        <!-- Left Page -->
+        <div class="page" id="leftPage">
+          <div class="page-rows" id="leftRows">
+            <div class="row-cells" id="leftRowTop">
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+            </div>
+            <div class="row-cells" id="leftRowBottom">
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-divider"></div>
+
+        <!-- Right Page -->
+        <div class="page" id="rightPage">
+          <div class="page-rows" id="rightRows">
+            <div class="row-cells" id="rightRowTop">
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+            </div>
+            <div class="row-cells" id="rightRowBottom">
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+              <div class="cell"><div class="cell-inner"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS (optional for some components; not required for core here) -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+    integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+    crossorigin="anonymous">
+  </script>
+
+  <script>
+    // Utility to create Split.js horizontal (columns) inside a row with three cells
+    function createRowSplit(rowEl) {
+      const cells = Array.from(rowEl.children);
+      return Split(cells, {
+        direction: 'horizontal',
+        sizes: [33.33, 33.33, 33.34],
+        minSize: 50,
+        gutterSize: 6,
+        snapOffset: 0,
+        cursor: 'col-resize',
+      });
+    }
+
+    // Utility to create Split.js vertical (rows) for two stacked rows on a page
+    function createPageSplit(pageRowsEl) {
+      const rows = Array.from(pageRowsEl.children);
+      return Split(rows, {
+        direction: 'vertical',
+        sizes: [50, 50],
+        minSize: 60,
+        gutterSize: 6,
+        snapOffset: 0,
+        cursor: 'row-resize',
+      });
+    }
+
+    // Initialize splits
+    const leftRowTopSplit = createRowSplit(document.getElementById('leftRowTop'));
+    const leftRowBottomSplit = createRowSplit(document.getElementById('leftRowBottom'));
+    const rightRowTopSplit = createRowSplit(document.getElementById('rightRowTop'));
+    const rightRowBottomSplit = createRowSplit(document.getElementById('rightRowBottom'));
+
+    const leftPageSplit = createPageSplit(document.getElementById('leftRows'));
+    const rightPageSplit = createPageSplit(document.getElementById('rightRows'));
+
+    // Image/cropping logic
+    // Each cell-inner gets an img, zoom slider, and hint
+    const allCellInners = Array.from(document.querySelectorAll('.cell-inner'));
+
+    // Provide 12 unique images (picsum with different seeds)
+    function picsumUrl(seed, w=1200, h=900) {
+      // Use a "seed" for determinism; size generous to keep quality when zooming
+      return `https://picsum.photos/seed/${seed}/${w}/${h}`;
+    }
+
+    // State per cell
+    const cellState = new WeakMap(); // {scale, minScale, x, y}
+    let globalSeedBase = Math.floor(Math.random()*100000);
+
+    function setupCell(cellInner, index) {
+      cellInner.innerHTML = '';
+      const img = document.createElement('img');
+      img.alt = 'Photo';
+      img.draggable = false;
+
+      const hint = document.createElement('div');
+      hint.className = 'hint';
+      hint.textContent = 'Drag to pan • Scroll to zoom';
+
+      const controls = document.createElement('div');
+      controls.className = 'controls';
+      const label = document.createElement('span');
+      label.className = 'text-muted small';
+      label.textContent = 'Zoom';
+      const range = document.createElement('input');
+      range.type = 'range';
+      range.min = '1';
+      range.max = '4';
+      range.step = '0.01';
+      range.value = '1';
+      range.className = 'form-range zoom-range';
+
+      controls.appendChild(label);
+      controls.appendChild(range);
+
+      cellInner.appendChild(img);
+      cellInner.appendChild(hint);
+      cellInner.appendChild(controls);
+
+      // Load unique image
+      const seed = globalSeedBase + index;
+      img.src = picsumUrl(seed);
+
+      // Initialize state
+      const initState = { scale: 1, minScale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0, imgStartX: 0, imgStartY: 0 };
+      cellState.set(cellInner, initState);
+
+      function clampPan(state) {
+        // Ensure no whitespace shows by keeping image covering the cell
+        const rect = cellInner.getBoundingClientRect();
+        const iw = img.naturalWidth;
+        const ih = img.naturalHeight;
+        if (!iw || !ih) return;
+
+        const scaledW = iw * state.scale;
+        const scaledH = ih * state.scale;
+
+        // Allowed pan range: image must at least cover cellInner
+        const minX = Math.min(0, rect.width - scaledW);
+        const maxX = Math.max(0, rect.width - scaledW < 0 ? 0 : rect.width - scaledW);
+        const minY = Math.min(0, rect.height - scaledH);
+        const maxY = Math.max(0, rect.height - scaledH < 0 ? 0 : rect.height - scaledH);
+
+        // If image is bigger than container, clamp between negative and zero; if smaller, center it
+        const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+        // When image is smaller than container (shouldn't happen if minScale computed), center
+        if (scaledW <= rect.width) {
+          state.x = (rect.width - scaledW) / 2;
+        } else {
+          state.x = clamp(state.x, rect.width - scaledW, 0);
+        }
+        if (scaledH <= rect.height) {
+          state.y = (rect.height - scaledH) / 2;
+        } else {
+          state.y = clamp(state.y, rect.height - scaledH, 0);
+        }
+      }
+
+      function computeMinScale(state) {
+        const rect = cellInner.getBoundingClientRect();
+        const iw = img.naturalWidth;
+        const ih = img.naturalHeight;
+        if (!iw || !ih || rect.width === 0 || rect.height === 0) return 1;
+        // Cover behavior: min scale to cover container
+        const scaleW = rect.width / iw;
+        const scaleH = rect.height / ih;
+        const minCover = Math.max(scaleW, scaleH);
+        state.minScale = Math.max(1, minCover); // keep at least 1 for quality
+        if (state.scale < state.minScale) state.scale = state.minScale;
+      }
+
+      function applyTransform(state) {
+        // Using CSS variables for transform
+        img.style.setProperty('--img-x', '0px'); // we translate via transform; keep origin top-left
+        img.style.setProperty('--img-y', '0px');
+        img.style.setProperty('--img-translate-x', `${state.x}px`);
+        img.style.setProperty('--img-translate-y', `${state.y}px`);
+        img.style.setProperty('--img-scale', state.scale);
+      }
+
+      function recalcAndUpdate(state) {
+        computeMinScale(state);
+        clampPan(state);
+        applyTransform(state);
+        // Update slider bounds
+        range.min = String(state.minScale.toFixed(2));
+        if (parseFloat(range.value) < state.minScale) range.value = String(state.minScale);
+      }
+
+      function onWheelZoom(e) {
+        e.preventDefault();
+        const state = cellState.get(cellInner);
+        const rect = cellInner.getBoundingClientRect();
+        const iw = img.naturalWidth;
+        const ih = img.naturalHeight;
+        if (!iw || !ih) return;
+
+        // Zoom around pointer
+        const prevScale = state.scale;
+        computeMinScale(state);
+
+        const delta = -e.deltaY; // natural: wheel up to zoom in
+        const zoomFactor = Math.exp(delta * 0.0015); // smooth zoom
+        let newScale = prevScale * zoomFactor;
+        newScale = Math.max(state.minScale, Math.min(4, newScale));
+
+        // Adjust pan so the point under cursor stays under cursor
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+
+        const prevW = iw * prevScale;
+        const prevH = ih * prevScale;
+        const newW = iw * newScale;
+        const newH = ih * newScale;
+
+        const dx = (cx - state.x) / prevW;
+        const dy = (cy - state.y) / prevH;
+
+        state.x = cx - dx * newW;
+        state.y = cy - dy * newH;
+        state.scale = newScale;
+
+        clampPan(state);
+        applyTransform(state);
+        range.value = String(state.scale);
+      }
+
+      function onPointerDown(e) {
+        e.preventDefault();
+        const state = cellState.get(cellInner);
+        state.dragging = true;
+        cellInner.parentElement.classList.add('dragging');
+        state.startX = e.clientX;
+        state.startY = e.clientY;
+        state.imgStartX = state.x;
+        state.imgStartY = state.y;
+        cellInner.setPointerCapture(e.pointerId);
+      }
+      function onPointerMove(e) {
+        const state = cellState.get(cellInner);
+        if (!state.dragging) return;
+        const dx = e.clientX - state.startX;
+        const dy = e.clientY - state.startY;
+        state.x = state.imgStartX + dx;
+        state.y = state.imgStartY + dy;
+        clampPan(state);
+        applyTransform(state);
+      }
+      function onPointerUp(e) {
+        const state = cellState.get(cellInner);
+        state.dragging = false;
+        cellInner.parentElement.classList.remove('dragging');
+        try { cellInner.releasePointerCapture(e.pointerId); } catch {}
+      }
+
+      function onRangeInput() {
+        const state = cellState.get(cellInner);
+        const rect = cellInner.getBoundingClientRect();
+        const iw = img.naturalWidth, ih = img.naturalHeight;
+        if (!iw || !ih) return;
+        // Zoom centered (preserve center)
+        const prevScale = state.scale;
+        const newScale = Math.max(state.minScale, Math.min(4, parseFloat(range.value)));
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+
+        const prevW = iw * prevScale;
+        const prevH = ih * prevScale;
+        const newW = iw * newScale;
+        const newH = ih * newScale;
+
+        const dx = (cx - state.x) / prevW;
+        const dy = (cy - state.y) / prevH;
+
+        state.x = cx - dx * newW;
+        state.y = cy - dy * newH;
+        state.scale = newScale;
+        clampPan(state);
+        applyTransform(state);
+      }
+
+      img.addEventListener('load', () => {
+        const state = cellState.get(cellInner);
+        recalcAndUpdate(state);
+        applyTransform(state);
+        range.value = String(state.scale);
+      });
+
+      // Handle container resize (from Split.js)
+      const resizeObserver = new ResizeObserver(() => {
+        const state = cellState.get(cellInner);
+        recalcAndUpdate(state);
+      });
+      resizeObserver.observe(cellInner);
+
+      // Interactions
+      cellInner.addEventListener('wheel', onWheelZoom, { passive: false });
+      cellInner.addEventListener('pointerdown', onPointerDown);
+      cellInner.addEventListener('pointermove', onPointerMove);
+      cellInner.addEventListener('pointerup', onPointerUp);
+      cellInner.addEventListener('pointercancel', onPointerUp);
+      range.addEventListener('input', onRangeInput);
+
+      // Context menu disable for nicer UX while dragging
+      cellInner.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+
+    // Setup all cells with unique images
+    allCellInners.forEach((inner, i) => setupCell(inner, i));
+
+    // Global actions
+    document.getElementById('resetAll').addEventListener('click', () => {
+      allCellInners.forEach((inner) => {
+        const img = inner.querySelector('img');
+        const state = cellState.get(inner);
+        if (!img || !state) return;
+        state.scale = 1; // will be bumped to minScale
+        state.x = 0; state.y = 0;
+        const range = inner.querySelector('.zoom-range');
+        // Force recompute
+        const iw = img.naturalWidth;
+        if (iw) {
+          const rect = inner.getBoundingClientRect();
+          // recompute and apply
+          const dummy = cellState.get(inner);
+          const resize = new Event('resize');
+          // trigger recalculation
+          const computeMin = () => {
+            const rect = inner.getBoundingClientRect();
+            const iw = img.naturalWidth;
+            const ih = img.naturalHeight;
+            if (!iw || !ih) return;
+            const scaleW = rect.width / iw;
+            const scaleH = rect.height / ih;
+            dummy.minScale = Math.max(1, Math.max(scaleW, scaleH));
+            dummy.scale = Math.max(dummy.scale, dummy.minScale);
+          };
+          computeMin();
+          // center after reset
+          const iw2 = img.naturalWidth, ih2 = img.naturalHeight;
+          const scaledW = iw2 * dummy.scale;
+          const scaledH = ih2 * dummy.scale;
+          dummy.x = (rect.width - scaledW)/2;
+          dummy.y = (rect.height - scaledH)/2;
+          // apply
+          const clamp = () => {
+            const r = inner.getBoundingClientRect();
+            const minX = r.width - scaledW;
+            const minY = r.height - scaledH;
+            dummy.x = Math.min(0, Math.max(minX, dummy.x));
+            dummy.y = Math.min(0, Math.max(minY, dummy.y));
+          };
+          clamp();
+          inner.querySelector('img').style.setProperty('--img-translate-x', `${dummy.x}px`);
+          inner.querySelector('img').style.setProperty('--img-translate-y', `${dummy.y}px`);
+          inner.querySelector('img').style.setProperty('--img-scale', dummy.scale);
+          range.value = String(dummy.scale);
+        }
+      });
+    });
+
+    document.getElementById('shuffleAll').addEventListener('click', () => {
+      globalSeedBase = Math.floor(Math.random()*100000);
+      allCellInners.forEach((inner, i) => {
+        const img = inner.querySelector('img');
+        if (!img) return;
+        img.src = picsumUrl(globalSeedBase + i);
+      });
+    });
+
+    // Prevent page scroll while wheel-zooming over any cell
+    document.addEventListener('wheel', (e) => {
+      const target = e.target;
+      if (target && (target.closest('.cell-inner'))) {
+        // Prevent default scrolling if over image area
+        e.preventDefault();
+      }
+    }, { passive: false });
+  </script>
+</body>
+</html>

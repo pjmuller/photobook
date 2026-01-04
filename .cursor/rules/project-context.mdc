@@ -1,0 +1,51 @@
+---
+alwaysApply: true
+---
+
+# Photobook Creator
+
+## Purpose
+A Vue 3 + TypeScript SPA for creating family photo albums. Users select a folder of JPG images, arrange them in customizable page layouts, and adjust crops. Output is `album.json` which a separate process uses to generate PDFs.
+
+## Folder Structure
+```
+app/                          # Main application (Vite + Vue 3 + TS)
+├── src/
+│   ├── config.ts             # Fixed dimensions: PAGE_WIDTH=730, PAGE_HEIGHT=598, PAGE_GUTTER=10
+│   ├── types.ts              # TypeScript interfaces for Album, Page, Row, Cell
+│   ├── composables/
+│   │   ├── useCropCalculation.ts   # Focal point → crop pixel conversion
+│   │   ├── useFileSystem.ts        # File System Access API, album.json R/W
+│   │   └── useImageBank.ts         # EXIF date sorting
+│   └── components/           # Vue components (PageSpread, PhotoCell, etc.)
+├── App.vue                   # Root state management, all mutations
+grid_crop/                    # Prototypes (00_opus_45.html = reference implementation)
+source/                       # Sample JPG images for testing
+```
+
+## Key Algorithms
+
+### Cropping Model (Focal Point + Zoom)
+User intent is stored as `focalPoint: {x, y}` (0-1 ratios) and `zoom` (1.0 = cover, max 3.0).
+These are converted to pixel `crop_x/y/width/height` for the PDF generator.
+
+**Calculation (`calculateCrop`):**
+1. Compute "cover" crop box at zoom=1.0 (largest rect with cell's AR that fits in image)
+2. Apply zoom: `finalCropW = baseCropW / zoom`
+3. Center crop box on focal point pixel location
+4. Clamp to image bounds to prevent whitespace
+
+### Display Transform
+Images aren't cropped in the browser—they're scaled and translated via CSS `transform`:
+```
+scale = cellWidth / crop_width
+translateX = -crop_x * scale
+translateY = -crop_y * scale
+```
+
+### Layout System
+Four layouts: "1", "2-2", "2-3", "3-2" (numbers = cells per row).
+Row heights and cell widths use `Math.floor()` for N-1 elements, last gets remainder to sum exactly to PAGE_WIDTH/HEIGHT.
+
+### Resizing
+Custom gutter drag implementation (no Split.js). Gutters are 10px `<div>`s between rows/cells. On drag, adjacent elements resize inversely while respecting minimums (ROW_MIN_HEIGHT=100, CELL_MIN_WIDTH=100).

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album - v1: Vanilla JS Mastery</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Split.js -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body { background-color: #333; color: #fff; overflow-x: hidden; }
+        .album-container { display: flex; width: 100%; padding: 20px; box-sizing: border-box; }
+        .page {
+            /* Aspect Ratio 35:29 => (29/35 * 100) = 82.857% */
+            aspect-ratio: 35 / 29;
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            background-color: #1a1a1a;
+            border: 2px solid #555;
+        }
+        .page-row { display: flex; }
+        .cell {
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+            border: 1px solid #444;
+        }
+        .cell img {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Initial fit */
+            cursor: grab;
+            user-select: none;
+            will-change: transform;
+        }
+        .cell img:active { cursor: grabbing; }
+        .controls {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            right: 5px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .cell:hover .controls { opacity: 1; }
+        .controls input[type="range"] { width: 100%; }
+        /* Split.js Gutter Styling */
+        .gutter { background-color: #555; }
+        .gutter.gutter-horizontal { cursor: ns-resize; height: 10px; }
+        .gutter.gutter-vertical { cursor: ew-resize; width: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid text-center p-3">
+        <h1>Photo Album - Version 1: Vanilla JS Mastery</h1>
+        <p class="text-muted">All image manipulation (pan/zoom) is handled with pure, from-scratch JavaScript.</p>
+    </div>
+    <div class="album-container">
+        <!-- Left Page -->
+        <div class="page" id="page-left">
+            <div class="page-row" id="page-left-row1">
+                <div class="cell" id="c1"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c2"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c3"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+            </div>
+            <div class="page-row" id="page-left-row2">
+                <div class="cell" id="c4"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c5"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c6"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+            </div>
+        </div>
+        <!-- Right Page -->
+        <div class="page" id="page-right">
+            <div class="page-row" id="page-right-row1">
+                <div class="cell" id="c7"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c8"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c9"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+            </div>
+            <div class="page-row" id="page-right-row2">
+                <div class="cell" id="c10"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c11"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+                <div class="cell" id="c12"><div class="controls"><input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1"></div></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Gutter Initialization using Split.js ---
+    ['page-left', 'page-right'].forEach(pageId => {
+        Split([`#${pageId}-row1`, `#${pageId}-row2`], {
+            direction: 'vertical',
+            sizes: [50, 50],
+            minSize: 100,
+            gutterSize: 10,
+        });
+    });
+
+    ['page-left-row1', 'page-left-row2', 'page-right-row1', 'page-right-row2'].forEach(rowId => {
+        const children = Array.from(document.getElementById(rowId).children).map(c => `#${c.id}`);
+        Split(children, {
+            sizes: [33.3, 33.3, 33.3],
+            minSize: 50,
+            gutterSize: 10,
+        });
+    });
+
+    // --- Vanilla JS Image Cropping Logic ---
+    const cells = document.querySelectorAll('.cell');
+    cells.forEach((cell, index) => {
+        // Add unique image
+        const img = document.createElement('img');
+        img.src = `https://picsum.photos/800/600?random=${index + 1}`;
+        cell.prepend(img);
+
+        let state = {
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            transX: 0,
+            transY: 0,
+            zoom: 1,
+        };
+        
+        const zoomSlider = cell.querySelector('.zoom-slider');
+        zoomSlider.addEventListener('input', (e) => {
+            state.zoom = parseFloat(e.target.value);
+            updateTransform();
+        });
+
+        img.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            state.isDragging = true;
+            state.startX = e.clientX - state.transX;
+            state.startY = e.clientY - state.transY;
+            img.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging) return;
+            state.transX = e.clientX - state.startX;
+            state.transY = e.clientY - state.startY;
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isDragging = false;
+            img.style.cursor = 'grab';
+        });
+        
+        function updateTransform() {
+            const { zoom, transX, transY } = state;
+            
+            // Constrain panning to keep image edges from showing
+            const imgRect = img.getBoundingClientRect();
+            const cellRect = cell.getBoundingClientRect();
+
+            const maxPanX = (imgRect.width * zoom - cellRect.width) / 2 / zoom;
+            const maxPanY = (imgRect.height * zoom - cellRect.height) / 2 / zoom;
+
+            // Clamp values
+            const clampedX = Math.max(-maxPanX, Math.min(maxPanX, transX / zoom));
+            const clampedY = Math.max(-maxPanY, Math.min(maxPanY, transY / zoom));
+            
+            state.transX = clampedX * zoom;
+            state.transY = clampedY * zoom;
+
+            img.style.transform = `scale(${zoom}) translate(${clampedX}px, ${clampedY}px)`;
+        }
+    });
+});
+</script>
+</body>
+</html>

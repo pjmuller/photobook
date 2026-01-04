@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album V2 - Canvas Approach</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #2c3e50;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .album-container {
+            width: 100%;
+            height: 80vh;
+            display: flex;
+            gap: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border-radius: 12px;
+            overflow: hidden;
+            padding: 20px;
+        }
+        
+        .page {
+            flex: 1;
+            aspect-ratio: 35/29;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.95);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        .page-row {
+            flex: 1;
+            display: flex;
+        }
+        
+        .photo-cell {
+            flex: 1;
+            position: relative;
+            border: 2px solid #ecf0f1;
+            background: #34495e;
+        }
+        
+        .photo-canvas {
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+            display: block;
+        }
+        
+        .photo-canvas:active {
+            cursor: grabbing;
+        }
+        
+        .canvas-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(44, 62, 80, 0.9);
+            padding: 10px;
+            border-radius: 8px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+        
+        .photo-cell:hover .canvas-controls {
+            opacity: 1;
+        }
+        
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .control-label {
+            color: #ecf0f1;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 40px;
+        }
+        
+        .control-slider {
+            flex: 1;
+            height: 4px;
+            border-radius: 2px;
+            background: #7f8c8d;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        .control-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+        }
+        
+        .control-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #3498db;
+            cursor: pointer;
+            border: none;
+        }
+        
+        .reset-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        
+        .reset-btn:hover {
+            background: #c0392b;
+        }
+        
+        .gutter {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .gutter::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+        }
+        
+        .gutter.gutter-horizontal {
+            height: 12px;
+            cursor: row-resize;
+        }
+        
+        .gutter.gutter-vertical {
+            width: 12px;
+            cursor: col-resize;
+        }
+        
+        .split {
+            box-sizing: border-box;
+        }
+        
+        .loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ecf0f1;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="text-center mb-4 text-white">Photo Album V2 - Canvas Approach</h1>
+        
+        <div class="album-container" id="albumContainer">
+            <!-- Left Page -->
+            <div class="page" id="leftPage">
+                <div class="page-row" id="leftRow1">
+                    <div class="photo-cell" data-cell="0">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=1"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="7">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=8"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="8">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=9"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                </div>
+                <div class="page-row" id="rightRow2">
+                    <div class="photo-cell" data-cell="9">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=10"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="10">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=11"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="11">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=12"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class CanvasPhotoAlbum {
+            constructor() {
+                this.canvases = new Map();
+                this.images = new Map();
+                this.init();
+            }
+            
+            init() {
+                this.setupSplitters();
+                this.setupCanvases();
+            }
+            
+            setupSplitters() {
+                // Horizontal splitters for each page
+                Split(['#leftRow1', '#leftRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 12,
+                    cursor: 'row-resize',
+                    onDragEnd: () => this.resizeAllCanvases()
+                });
+                
+                Split(['#rightRow1', '#rightRow2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: 12,
+                    cursor: 'row-resize',
+                    onDragEnd: () => this.resizeAllCanvases()
+                });
+                
+                // Vertical splitters for each row
+                setTimeout(() => {
+                    const leftRow1Cells = document.querySelectorAll('#leftRow1 .photo-cell');
+                    const leftRow2Cells = document.querySelectorAll('#leftRow2 .photo-cell');
+                    const rightRow1Cells = document.querySelectorAll('#rightRow1 .photo-cell');
+                    const rightRow2Cells = document.querySelectorAll('#rightRow2 .photo-cell');
+                    
+                    Split(Array.from(leftRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 12,
+                        cursor: 'col-resize',
+                        onDragEnd: () => this.resizeAllCanvases()
+                    });
+                    
+                    Split(Array.from(leftRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 12,
+                        cursor: 'col-resize',
+                        onDragEnd: () => this.resizeAllCanvases()
+                    });
+                    
+                    Split(Array.from(rightRow1Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 12,
+                        cursor: 'col-resize',
+                        onDragEnd: () => this.resizeAllCanvases()
+                    });
+                    
+                    Split(Array.from(rightRow2Cells), {
+                        sizes: [33.33, 33.33, 33.33],
+                        gutterSize: 12,
+                        cursor: 'col-resize',
+                        onDragEnd: () => this.resizeAllCanvases()
+                    });
+                }, 100);
+            }
+            
+            setupCanvases() {
+                document.querySelectorAll('.photo-canvas').forEach((canvas, index) => {
+                    const cell = canvas.closest('.photo-cell');
+                    const loading = cell.querySelector('.loading-indicator');
+                    const zoomSlider = cell.querySelector('.zoom-slider');
+                    const panXSlider = cell.querySelector('.pan-x');
+                    const panYSlider = cell.querySelector('.pan-y');
+                    const resetBtn = cell.querySelector('.reset-btn');
+                    
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    
+                    const canvasData = {
+                        canvas,
+                        ctx,
+                        img,
+                        cell,
+                        loading,
+                        zoom: 1,
+                        panX: 0,
+                        panY: 0,
+                        isDragging: false,
+                        lastX: 0,
+                        lastY: 0
+                    };
+                    
+                    this.canvases.set(index, canvasData);
+                    this.images.set(index, img);
+                    
+                    // Load image
+                    img.onload = () => {
+                        loading.style.display = 'none';
+                        this.setupCanvasSize(canvasData);
+                        this.drawImage(canvasData);
+                    };
+                    
+                    img.onerror = () => {
+                        loading.textContent = 'Failed to load';
+                        loading.style.color = '#e74c3c';
+                    };
+                    
+                    img.src = canvas.dataset.src;
+                    
+                    // Zoom slider
+                    zoomSlider.addEventListener('input', (e) => {
+                        canvasData.zoom = e.target.value / 100;
+                        this.drawImage(canvasData);
+                    });
+                    
+                    // Pan sliders
+                    panXSlider.addEventListener('input', (e) => {
+                        canvasData.panX = (e.target.value / 100) * canvas.width * 0.5;
+                        this.drawImage(canvasData);
+                    });
+                    
+                    panYSlider.addEventListener('input', (e) => {
+                        canvasData.panY = (e.target.value / 100) * canvas.height * 0.5;
+                        this.drawImage(canvasData);
+                    });
+                    
+                    // Reset button
+                    resetBtn.addEventListener('click', () => {
+                        canvasData.zoom = 1;
+                        canvasData.panX = 0;
+                        canvasData.panY = 0;
+                        zoomSlider.value = 100;
+                        panXSlider.value = 0;
+                        panYSlider.value = 0;
+                        this.drawImage(canvasData);
+                    });
+                    
+                    // Mouse drag for panning
+                    canvas.addEventListener('mousedown', (e) => {
+                        canvasData.isDragging = true;
+                        const rect = canvas.getBoundingClientRect();
+                        canvasData.lastX = e.clientX - rect.left;
+                        canvasData.lastY = e.clientY - rect.top;
+                        e.preventDefault();
+                    });
+                    
+                    canvas.addEventListener('mousemove', (e) => {
+                        if (!canvasData.isDragging) return;
+                        
+                        const rect = canvas.getBoundingClientRect();
+                        const currentX = e.clientX - rect.left;
+                        const currentY = e.clientY - rect.top;
+                        
+                        const deltaX = currentX - canvasData.lastX;
+                        const deltaY = currentY - canvasData.lastY;
+                        
+                        canvasData.panX += deltaX;
+                        canvasData.panY += deltaY;
+                        
+                        canvasData.lastX = currentX;
+                        canvasData.lastY = currentY;
+                        
+                        // Update pan sliders
+                        panXSlider.value = Math.max(-100, Math.min(100, (canvasData.panX / (canvas.width * 0.5)) * 100));
+                        panYSlider.value = Math.max(-100, Math.min(100, (canvasData.panY / (canvas.height * 0.5)) * 100));
+                        
+                        this.drawImage(canvasData);
+                    });
+                    
+                    canvas.addEventListener('mouseup', () => {
+                        canvasData.isDragging = false;
+                    });
+                    
+                    canvas.addEventListener('mouseleave', () => {
+                        canvasData.isDragging = false;
+                    });
+                    
+                    // Touch support
+                    canvas.addEventListener('touchstart', (e) => {
+                        const touch = e.touches[0];
+                        const rect = canvas.getBoundingClientRect();
+                        canvasData.isDragging = true;
+                        canvasData.lastX = touch.clientX - rect.left;
+                        canvasData.lastY = touch.clientY - rect.top;
+                        e.preventDefault();
+                    });
+                    
+                    canvas.addEventListener('touchmove', (e) => {
+                        if (!canvasData.isDragging) return;
+                        
+                        const touch = e.touches[0];
+                        const rect = canvas.getBoundingClientRect();
+                        const currentX = touch.clientX - rect.left;
+                        const currentY = touch.clientY - rect.top;
+                        
+                        const deltaX = currentX - canvasData.lastX;
+                        const deltaY = currentY - canvasData.lastY;
+                        
+                        canvasData.panX += deltaX;
+                        canvasData.panY += deltaY;
+                        
+                        canvasData.lastX = currentX;
+                        canvasData.lastY = currentY;
+                        
+                        // Update pan sliders
+                        panXSlider.value = Math.max(-100, Math.min(100, (canvasData.panX / (canvas.width * 0.5)) * 100));
+                        panYSlider.value = Math.max(-100, Math.min(100, (canvasData.panY / (canvas.height * 0.5)) * 100));
+                        
+                        this.drawImage(canvasData);
+                        e.preventDefault();
+                    });
+                    
+                    canvas.addEventListener('touchend', () => {
+                        canvasData.isDragging = false;
+                    });
+                    
+                    // Mouse wheel zoom
+                    canvas.addEventListener('wheel', (e) => {
+                        e.preventDefault();
+                        const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                        const newZoom = Math.max(0.5, Math.min(2.0, canvasData.zoom + delta));
+                        canvasData.zoom = newZoom;
+                        zoomSlider.value = newZoom * 100;
+                        this.drawImage(canvasData);
+                    });
+                });
+                
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    setTimeout(() => this.resizeAllCanvases(), 100);
+                });
+            }
+            
+            setupCanvasSize(canvasData) {
+                const { canvas, cell } = canvasData;
+                const rect = cell.getBoundingClientRect();
+                
+                canvas.width = rect.width;
+                canvas.height = rect.height;
+                canvas.style.width = rect.width + 'px';
+                canvas.style.height = rect.height + 'px';
+            }
+            
+            resizeAllCanvases() {
+                this.canvases.forEach((canvasData) => {
+                    if (canvasData.img.complete) {
+                        this.setupCanvasSize(canvasData);
+                        this.drawImage(canvasData);
+                    }
+                });
+            }
+            
+            drawImage(canvasData) {
+                const { canvas, ctx, img, zoom, panX, panY } = canvasData;
+                
+                if (!img.complete) return;
+                
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                
+                // Calculate dimensions to fill canvas while maintaining aspect ratio
+                const canvasAspect = canvas.width / canvas.height;
+                const imgAspect = img.width / img.height;
+                
+                let drawWidth, drawHeight;
+                
+                if (canvasAspect > imgAspect) {
+                    // Canvas is wider, fit to width
+                    drawWidth = canvas.width * zoom;
+                    drawHeight = (canvas.width / imgAspect) * zoom;
+                } else {
+                    // Canvas is taller, fit to height
+                    drawHeight = canvas.height * zoom;
+                    drawWidth = (canvas.height * imgAspect) * zoom;
+                }
+                
+                // Calculate position (centered + pan offset)
+                const x = (canvas.width - drawWidth) / 2 + panX;
+                const y = (canvas.height - drawHeight) / 2 + panY;
+                
+                // Draw image
+                ctx.drawImage(img, x, y, drawWidth, drawHeight);
+                
+                // Add subtle vignette effect
+                const gradient = ctx.createRadialGradient(
+                    canvas.width / 2, canvas.height / 2, 0,
+                    canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
+                );
+                gradient.addColorStop(0, 'rgba(0,0,0,0)');
+                gradient.addColorStop(1, 'rgba(0,0,0,0.1)');
+                
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+        
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new CanvasPhotoAlbum();
+        });
+    </script>
+</body>
+</html>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="1">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=2"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="2">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=3"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                </div>
+                <div class="page-row" id="leftRow2">
+                    <div class="photo-cell" data-cell="3">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=4"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="4">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=5"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                    <div class="photo-cell" data-cell="5">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=6"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>
+                            <div class="control-group">
+                                <span class="control-label">Pan</span>
+                                <input type="range" class="control-slider pan-x" min="-100" max="100" value="0">
+                                <input type="range" class="control-slider pan-y" min="-100" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="loading-indicator">Loading...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Right Page -->
+            <div class="page" id="rightPage">
+                <div class="page-row" id="rightRow1">
+                    <div class="photo-cell" data-cell="6">
+                        <canvas class="photo-canvas" data-src="https://picsum.photos/600/400?random=7"></canvas>
+                        <div class="canvas-controls">
+                            <div class="control-group">
+                                <span class="control-label">Zoom</span>
+                                <input type="range" class="control-slider zoom-slider" min="50" max="200" value="100">
+                                <button class="reset-btn">Reset</button>
+                            </div>

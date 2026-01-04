@@ -83,7 +83,8 @@ Prioritize simple, effective code, a clean UI, and a smooth user experience.
   - No need for scaling, we work with fixed pixel dimensions, moving the gutter with x pixels changes the `height` or `width` attribute value with the same amount of pixels
   - Enforce a minimum size to prevent cells from collapsing, see `ROW_MIN_HEIGHT` and `CELL_MIN_WIDTH`
   - Update the `height` or `width` values in the Vue data model, letting the UI update reactively. Ensure the sum of the resized properties remains either `PAGE_WIDTH` or `PAGE_HEIGHT`.
-  - On `mouseup`, remove the event listeners. Images within the resized cells will automatically be re-rendered, adjusting their crop to the new cell aspect ratio while preserving the user's custom `focalPoint` and `zoom` settings.
+  - continiously resize the cells (don't wait until the `mouseup` event), adjusting their crop to the new cell aspect ratio while preserving the user's custom `focalPoint` and `zoom` settings.
+  - On `mouseup`, remove the event listeners.
 
 # Image Intelligence: Cropping, Panning, and Zooming
 
@@ -92,42 +93,42 @@ To provide a seamless and professional experience, image handling is managed thr
 **Data Model (in `album.json`):**
 For each image placed in a cell, we store a core set of user-driven properties. All other display values are *derived* from these.
 - `path`: The image filename.
-- **User Intent Model**:
-  - `focalPoint`: An object `{x, y}` where `x` and `y` are ratios from `0.0` to `1.0`. This marks the most important spot in the image, as defined by the user or by smart auto-detection. Example: `{x: 0.5, y: 0.5}` is the exact center.
-  - `zoom`: A float `>= 1.0`. `1.0` represents the default zoom level that ensures the image covers the cell. Higher values signify zooming in on the focal point.
+- **User Intent Model (The Source of Truth)**:
+  - `focalPoint`: An object `{x, y}` where `x` and `y` are ratios from `0.0` to `1.0`. This marks the most important spot in the image, as defined by the user. It acts as the anchor for all panning and zooming operations. Example: `{x: 0.5, y: 0.5}` is the exact center.
+  - `zoom`: A float `>= 1.0`. This is a **magnification factor**. `zoom: 1.0` represents the base level where the image is scaled just large enough to "cover" the cell's area without leaving whitespace. `zoom: 2.0` means the image is magnified to be twice as large as that base "cover" state, effectively zooming in on the `focalPoint`.
 - **Computed Output for PDF Generator**:
   - These values are calculated by the JS logic and stored so the PDF generator doesn't need to re-compute anything.
   - `crop_x`, `crop_y`, `crop_width`, `crop_height`: The precise pixel-based rectangle to be cropped from the original image. All these values **must always be non-negative pixel numbers (integers or floats), not `null` or `undefined`**.
 
 **Auto-Crop on Drop:**
-When an image is first dropped into a cell, the system **must** automatically calculate the crop. The cell's image data should be fully initialized: `focalPoint` set to `{x: 0.5, y: 0.5}`, `zoom` set to `1.0`, and all `crop_x`, `crop_y`, `crop_width`, `crop_height` values immediately computed by calling the `calculateCrop` function based on the cell's current `width` and `height`. Ensure all these image-related properties are explicitly set with concrete, non-null values.
+When an image is first dropped into a cell, the system **must** automatically calculate the optimal crop. The cell's image data should be fully initialized: `focalPoint` set to the center `{x: 0.5, y: 0.5}`, `zoom` set to the minimum value of `1.0`, and all `crop_x`, `crop_y`, `crop_width`, `crop_height` values immediately computed by calling the `calculateCrop` function.
 
-The results are immediately saved to `album.json`.
-
-Exception: empty cells (without an image) only have the `width` set (see example Persistence & Data section below)
+**Manual Panning and Zooming:**
+- **Panning:** When a user pans the image, the application is modifying the `focalPoint`. The `zoom` level remains unchanged. The `crop_*` values are recalculated in real-time.
+- **Zooming:** When a user zooms, the application is modifying the `zoom` value. The `focalPoint` remains unchanged, ensuring the view stays centered on the point of interest. The `crop_*` values are recalculated in real-time.
 
 **Core Calculation Logic (Model to Pixels):**
 This must be implemented as a **pure function**, e.g., `calculateCrop(imageDimensions, cellDimensions, focalPoint, zoom)`. This function takes all necessary data as arguments and returns an object with the final `{ crop_x, crop_y, crop_width, crop_height }`. It must not have any side effects.
 
-It must be executed whenever an image is dropped, a cell is resized, or the user manually adjusts the crop.
+It must be executed whenever an image is dropped, a cell is resized, or the user manually pans or zooms.
 
 *Calculation Steps:*
 1.  **Inputs**: Original image dimensions (`imgW`, `imgH`), cell dimensions (`cellW`, `cellH`), `focalPoint`, and `zoom`.
 2.  **Calculate Aspect Ratios**: `imgAR = imgW / imgH`, `cellAR = cellW / cellH`.
-3.  **Determine "Cover" Crop Box**: Find the dimensions of a rectangle that has the same aspect ratio as the cell but is scaled to fit within the original image, covering the maximum possible area.
+3.  **Determine "Cover" Crop Box at `zoom: 1.0`**: Find the dimensions of a rectangle that has the same aspect ratio as the cell but is scaled to fit within the original image. This represents the maximum possible view of the image within the cell's constraints.
     - If `imgAR > cellAR` (image is wider than cell), the base crop dimensions are `width = imgH * cellAR`, `height = imgH`.
-    - If `imgAR < cellAR` (image is narrower than cell), the base crop dimensions are `width = imgW`, `height = imgW / cellAR`.
+    - If `imgAR <= cellAR` (image is narrower or same AR as cell), the base crop dimensions are `width = imgW`, `height = imgW / cellAR`.
     - Let's call these `baseCropW` and `baseCropH`.
-4.  **Apply Zoom**: Scale the base crop box down by the `zoom` factor.
+4.  **Apply Zoom**: Scale the base crop box down by the `zoom` factor to create the final crop dimensions. A higher zoom value results in a smaller cropping rectangle (i.e., a "zoomed-in" view).
     - `finalCropW = baseCropW / zoom`
     - `finalCropH = baseCropH / zoom`
 5.  **Position with Focal Point**: Determine the pixel coordinates of the focal point on the original image:
     - `focalX = focalPoint.x * imgW`
     - `focalY = focalPoint.y * imgH`
-6.  **Calculate Top-Left Corner**: Center the final crop box over the focal point.
+6.  **Calculate Top-Left Corner**: Center the final crop box over the focal point's pixel location.
     - `crop_x = focalX - (finalCropW / 2)`
     - `crop_y = focalY - (finalCropH / 2)`
-7.  **Clamp to Bounds**: The final step is crucial: ensure the crop box lies entirely within the original image. The calculated `crop_x` and `crop_y` must be adjusted to prevent any part of the crop area from being outside the image dimensions (`0, 0, imgW, imgH`). This can be expressed concisely:
+7.  **Clamp to Bounds**: Crucially, ensure the crop box lies entirely within the original image. The calculated `crop_x` and `crop_y` must be adjusted to prevent any part of the crop area from being outside the image dimensions (`0, 0, imgW, imgH`).
     - `final_crop_x = Math.max(0, Math.min(crop_x, imgW - finalCropW))`
     - `final_crop_y = Math.max(0, Math.min(crop_y, imgH - finalCropH))`
 8.  **Output**: The final, clamped values are stored in `album.json`:
@@ -205,7 +206,7 @@ Do this after any CRUD operation (add/move/remove image, resize, crop, change la
               "width": 237, // min: CELL_MIN_WIDTH, max: PAGE_WIDTH - (2 * (PAGE_GUTTER + CELL_MIN_WIDTH)).
               "path": "image1.jpg", // Path to the image file within the selected folder. (don't store blob:null/... but the actual filename within the selected folder)
               "focalPoint": {"x": 0.5, "y": 0.5}, // The user-defined point of interest (0.0-1.0 ratio).
-              "zoom": 1.0, // The user-defined zoom level, min 1.0, max 3.0.
+              "zoom": 1.0, // The user-defined zoom level, min 1.0 (base level where the image is scaled just large enough to "cover" the cell's area without leaving whitespace), max 3.0.
               // computed fields based on focalPoint and zoom
               "crop_x": 15, // x on original image (in pixels)
               "crop_y": 90, // original image y position
@@ -259,7 +260,7 @@ Validation
 - **Image Cropping**:
   - **Auto-Crop**: When an image is first dropped, automatically calculate the crop to fill the cell (center-crop), covering the entire cell without showing white space.
   - **Manual Crop**: On double-click, The user can pan and zoom the image within the cell's aspect ratio. 
-    - do not open a modal, just overlay the image with a Bootstrap range slider. Make everthing else then the cell grayed out
+    - do not open a modal, show a Bootstrap range slider below the image. Make the cursor styled as not-allowed everywhere outside of the cell, or the slider.
     - when zooming in & out, keep the focal point in the same spot.
     - Be able to move the image within the cell (both horizontally and vertically). But always within bounds, never allow whitespaces to show.
     - double click to exit crop mode and reactivate the cell

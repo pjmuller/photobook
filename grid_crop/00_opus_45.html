@@ -1,0 +1,873 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resizable Photo Album Grid with Cropping</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+
+    <style>
+      :root {
+        --gutter: 7px;
+        --page-bg: #ffffff;
+        --album-bg: #2b2f36;
+        --app-bg: #0f1115;
+        --hint-fg: rgba(255, 255, 255, 0.75);
+        --hint-bg: rgba(0, 0, 0, 0.35);
+        --hint-border: rgba(255, 255, 255, 0.18);
+        --crop-accent: #3b82f6;
+        --crop-glow: rgba(59, 130, 246, 0.5);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 700px at 50% 10%, #1b2230 0%, var(--app-bg) 55%, #0b0d11 100%);
+        overflow: hidden;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+      }
+
+      .spread {
+        width: 100%;
+        height: 100%;
+        max-width: 100vw;
+        max-height: calc(100vh - 36px);
+        background: linear-gradient(90deg, #20242c 0%, var(--album-bg) 50%, #20242c 100%);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        display: flex;
+        gap: 10px;
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .page {
+        flex: 1 1 0;
+        background: var(--page-bg);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .page-row {
+        display: flex;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .cell {
+        overflow: hidden;
+        background: #e9ecef;
+        position: relative;
+        cursor: pointer;
+        transition: box-shadow 0.2s ease;
+        isolation: isolate;
+        user-select: none;
+      }
+
+      .cell:hover:not(.crop-active) {
+        box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.3);
+      }
+
+      .cell.crop-active {
+        box-shadow: inset 0 0 0 3px var(--crop-accent), 0 0 20px var(--crop-glow);
+        z-index: 10;
+        cursor: grab;
+      }
+
+      .cell.crop-active.is-dragging {
+        cursor: grabbing;
+      }
+
+      .cell img {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: auto;
+        height: auto;
+        max-width: none;
+        max-height: none;
+        display: block;
+        user-select: none;
+        -webkit-user-drag: none;
+        transform-origin: 0 0;
+        will-change: transform;
+        pointer-events: none;
+      }
+
+      /* Gutters */
+      .gutter {
+        background-color: #ffffff;
+        background-repeat: no-repeat;
+        background-position: center;
+      }
+
+      .gutter.gutter-vertical {
+        cursor: row-resize;
+      }
+
+      .gutter.gutter-horizontal {
+        cursor: col-resize;
+      }
+
+      .gutter:hover {
+        background-image: linear-gradient(
+          90deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+      .gutter.gutter-vertical:hover {
+        background-image: linear-gradient(
+          0deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+
+      .hint {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        max-width: min(560px, calc(100vw - 32px));
+        color: var(--hint-fg);
+        background: var(--hint-bg);
+        border: 1px solid var(--hint-border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        backdrop-filter: blur(8px);
+        font-size: 0.95rem;
+        line-height: 1.35;
+        z-index: 40;
+      }
+      .hint kbd {
+        background: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      /* Crop mode indicator badge */
+      .crop-badge {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: var(--crop-accent);
+        color: white;
+        font-size: 0.65rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        padding: 3px 8px;
+        border-radius: 4px;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+        z-index: 15;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        pointer-events: none;
+      }
+
+      .cell.crop-active .crop-badge {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      /* Overlay for click-outside detection */
+      .crop-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.3);
+        z-index: 5;
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity 0.2s ease, visibility 0.2s ease;
+      }
+
+      .crop-overlay.active {
+        opacity: 1;
+        visibility: visible;
+      }
+
+      /* Fixed toolbar at bottom */
+      .crop-toolbar {
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 50;
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(12px);
+        border-radius: 12px;
+        padding: 12px 20px;
+        display: none;
+        align-items: center;
+        gap: 16px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .crop-toolbar.active {
+        display: flex;
+      }
+
+      .crop-toolbar .toolbar-label {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.8rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        white-space: nowrap;
+      }
+
+      .crop-toolbar .cell-indicator {
+        background: var(--crop-accent);
+        color: white;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 6px;
+      }
+
+      .zoom-slider {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 160px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.2);
+        border-radius: 2px;
+        outline: none;
+        cursor: pointer;
+      }
+
+      .zoom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        background: var(--crop-accent);
+        border-radius: 50%;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+        transition: transform 0.15s ease;
+      }
+
+      .zoom-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.15);
+      }
+
+      .zoom-slider::-moz-range-thumb {
+        width: 18px;
+        height: 18px;
+        background: var(--crop-accent);
+        border-radius: 50%;
+        cursor: pointer;
+        border: none;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+      }
+
+      .zoom-value {
+        color: white;
+        font-size: 0.9rem;
+        font-weight: 600;
+        min-width: 42px;
+        text-align: center;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .reset-btn {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: white;
+        font-size: 0.8rem;
+        padding: 6px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        white-space: nowrap;
+      }
+
+      .reset-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+
+      @media (max-width: 768px) {
+        body {
+          overflow: auto;
+        }
+        .app {
+          min-height: 100vh;
+          padding: 10px;
+        }
+        .spread {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Overlay for detecting clicks outside -->
+    <div class="crop-overlay" id="crop-overlay"></div>
+
+    <div class="app">
+      <div class="spread" id="spread" aria-label="Two-page photo album spread">
+        <!-- Left Page -->
+        <section class="page" id="page-left" aria-label="Left page">
+          <div class="page-row" id="left-row-top">
+            <div class="cell" data-cell-id="1">
+              <img src="https://picsum.photos/seed/gpt52-01/1200/900" alt="Photo 1" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="2">
+              <img src="https://picsum.photos/seed/gpt52-02/1200/900" alt="Photo 2" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="3">
+              <img src="https://picsum.photos/seed/gpt52-03/1200/900" alt="Photo 3" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+          </div>
+          <div class="page-row" id="left-row-bottom">
+            <div class="cell" data-cell-id="4">
+              <img src="https://picsum.photos/seed/gpt52-04/1200/900" alt="Photo 4" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="5">
+              <img src="https://picsum.photos/seed/gpt52-05/1200/900" alt="Photo 5" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="6">
+              <img src="https://picsum.photos/seed/gpt52-06/1200/900" alt="Photo 6" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Page -->
+        <section class="page" id="page-right" aria-label="Right page">
+          <div class="page-row" id="right-row-top">
+            <div class="cell" data-cell-id="7">
+              <img src="https://picsum.photos/seed/gpt52-07/1200/900" alt="Photo 7" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="8">
+              <img src="https://picsum.photos/seed/gpt52-08/1200/900" alt="Photo 8" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="9">
+              <img src="https://picsum.photos/seed/gpt52-09/1200/900" alt="Photo 9" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+          </div>
+          <div class="page-row" id="right-row-bottom">
+            <div class="cell" data-cell-id="10">
+              <img src="https://picsum.photos/seed/gpt52-10/1200/900" alt="Photo 10" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="11">
+              <img src="https://picsum.photos/seed/gpt52-11/1200/900" alt="Photo 11" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+            <div class="cell" data-cell-id="12">
+              <img src="https://picsum.photos/seed/gpt52-12/1200/900" alt="Photo 12" />
+              <div class="crop-badge">Crop Mode</div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Fixed toolbar below spread -->
+    <div class="crop-toolbar" id="crop-toolbar">
+      <span class="toolbar-label">Crop Cell</span>
+      <span class="cell-indicator" id="cell-indicator">1</span>
+      <span class="toolbar-label">Zoom</span>
+      <input type="range" class="zoom-slider" id="zoom-slider" min="0" max="100" step="1" value="0" />
+      <span class="zoom-value" id="zoom-value">1.0×</span>
+      <button class="reset-btn" id="reset-btn">Reset</button>
+    </div>
+
+    <div class="hint">
+      <strong>Gutters:</strong> Drag white gutters to resize. 
+      <strong>Crop:</strong> Double-click a cell to enter crop mode. Use the slider or scroll to zoom, drag to pan. Click outside or press <kbd>Esc</kbd> to exit.
+    </div>
+
+    <!-- Split.js CDN -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const GUTTER_SIZE = 7;
+        const ZOOM_FACTOR_MAX = 5.0;
+
+        // ─────────────────────────────────────────────────────────────
+        // State Management
+        // ─────────────────────────────────────────────────────────────
+        const stateByCell = new WeakMap();
+        let activeCropCell = null;
+        let rafLayout = 0;
+        let currentDragState = null; // Global drag state for document-level tracking
+
+        // DOM elements
+        const spread = document.getElementById("spread");
+        const cropOverlay = document.getElementById("crop-overlay");
+        const cropToolbar = document.getElementById("crop-toolbar");
+        const cellIndicator = document.getElementById("cell-indicator");
+        const zoomSlider = document.getElementById("zoom-slider");
+        const zoomValue = document.getElementById("zoom-value");
+        const resetBtn = document.getElementById("reset-btn");
+        const cells = document.querySelectorAll(".cell");
+
+        const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
+
+        // ─────────────────────────────────────────────────────────────
+        // Image Transform Functions
+        // ─────────────────────────────────────────────────────────────
+        
+        function getCellRect(state) {
+          return state.cell.getBoundingClientRect();
+        }
+
+        function computeMinScale(state) {
+          if (!state.naturalW || !state.naturalH) return 1;
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          // Minimum scale to cover the cell (object-fit: cover equivalent)
+          return Math.max(cw / state.naturalW, ch / state.naturalH);
+        }
+
+        function clampTranslate(state) {
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          const iw = state.naturalW * state.scale;
+          const ih = state.naturalH * state.scale;
+          // Ensure cover: image fully spans cell; translation range keeps image edges beyond cell edges
+          const minTx = cw - iw;
+          const minTy = ch - ih;
+          state.tx = clamp(state.tx, minTx, 0);
+          state.ty = clamp(state.ty, minTy, 0);
+        }
+
+        function applyTransform(state) {
+          state.img.style.transform = `translate(${state.tx}px, ${state.ty}px) scale(${state.scale})`;
+        }
+
+        function resetToCover(state) {
+          state.minScale = computeMinScale(state);
+          state.scale = state.minScale;
+          const r = getCellRect(state);
+          const cw = Math.max(1, r.width);
+          const ch = Math.max(1, r.height);
+          const iw = state.naturalW * state.scale;
+          const ih = state.naturalH * state.scale;
+          // Center the image
+          state.tx = (cw - iw) / 2;
+          state.ty = (ch - ih) / 2;
+          // Store cell dimensions for next layout update
+          state.prevCellW = cw;
+          state.prevCellH = ch;
+          clampTranslate(state);
+          applyTransform(state);
+        }
+
+        function zoomAboutPoint(state, newScale, clientX, clientY) {
+          // Keep the point under (clientX, clientY) stationary during zoom
+          const r = getCellRect(state);
+          const px = clamp(clientX - r.left, 0, r.width);
+          const py = clamp(clientY - r.top, 0, r.height);
+          const anchorX = (px - state.tx) / state.scale;
+          const anchorY = (py - state.ty) / state.scale;
+
+          state.scale = Math.max(state.minScale, newScale);
+          state.tx = px - anchorX * state.scale;
+          state.ty = py - anchorY * state.scale;
+          clampTranslate(state);
+          applyTransform(state);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Toolbar Sync
+        // ─────────────────────────────────────────────────────────────
+
+        function syncToolbarFromState(state) {
+          // Map scale in [minScale, minScale*ZOOM_FACTOR_MAX] to slider [0..100]
+          const maxScale = state.minScale * ZOOM_FACTOR_MAX;
+          const t = (state.scale - state.minScale) / Math.max(1e-6, maxScale - state.minScale);
+          const v = clamp(Math.round(t * 100), 0, 100);
+          zoomSlider.value = String(v);
+          zoomValue.textContent = `${(state.scale / state.minScale).toFixed(1)}×`;
+        }
+
+        function setZoomFromSlider(state, sliderValue) {
+          const v = clamp(Number(sliderValue) || 0, 0, 100);
+          const maxScale = state.minScale * ZOOM_FACTOR_MAX;
+          const newScale = state.minScale + (maxScale - state.minScale) * (v / 100);
+          // Zoom around cell center for slider changes
+          const r = getCellRect(state);
+          zoomAboutPoint(state, newScale, r.left + r.width / 2, r.top + r.height / 2);
+          syncToolbarFromState(state);
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Layout Update (on resize/drag)
+        // ─────────────────────────────────────────────────────────────
+
+        function scheduleLayoutUpdate() {
+          if (rafLayout) return;
+          rafLayout = window.requestAnimationFrame(() => {
+            rafLayout = 0;
+            for (const cell of cells) {
+              const state = stateByCell.get(cell);
+              if (!state || !state.naturalW || !state.naturalH) continue;
+
+              const oldMin = state.minScale;
+              const oldScale = state.scale;
+              const newMin = computeMinScale(state);
+              state.minScale = newMin;
+
+              // Get new cell dimensions
+              const r = getCellRect(state);
+              const newCellW = Math.max(1, r.width);
+              const newCellH = Math.max(1, r.height);
+
+              // Use previous cell dimensions (or current if not yet set)
+              const oldCellW = state.prevCellW > 0 ? state.prevCellW : newCellW;
+              const oldCellH = state.prevCellH > 0 ? state.prevCellH : newCellH;
+
+              // Calculate the relative zoom ratio the user had set
+              const zoomRatio = oldMin > 0 ? oldScale / oldMin : 1;
+              
+              // Calculate what image point was at the center of the OLD cell
+              const oldCellCenterX = oldCellW / 2;
+              const oldCellCenterY = oldCellH / 2;
+              const imgCenterX = (oldCellCenterX - state.tx) / oldScale;
+              const imgCenterY = (oldCellCenterY - state.ty) / oldScale;
+
+              // Apply proportional scaling to maintain relative zoom
+              const maxScale = newMin * ZOOM_FACTOR_MAX;
+              const newScale = clamp(newMin * zoomRatio, newMin, maxScale);
+              state.scale = newScale;
+
+              // Reposition to keep the same image point centered in the NEW cell
+              const newCellCenterX = newCellW / 2;
+              const newCellCenterY = newCellH / 2;
+              state.tx = newCellCenterX - imgCenterX * state.scale;
+              state.ty = newCellCenterY - imgCenterY * state.scale;
+              
+              // Store new dimensions for next update
+              state.prevCellW = newCellW;
+              state.prevCellH = newCellH;
+              
+              // Clamp to ensure no whitespace
+              clampTranslate(state);
+              applyTransform(state);
+
+              // If this is the active cell, keep the UI accurate
+              if (cell === activeCropCell) {
+                syncToolbarFromState(state);
+              }
+            }
+          });
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Crop Mode Enter/Exit
+        // ─────────────────────────────────────────────────────────────
+
+        function enterCropMode(cell) {
+          if (activeCropCell === cell) return;
+          
+          if (activeCropCell) {
+            exitCropMode();
+          }
+          
+          activeCropCell = cell;
+          cell.classList.add("crop-active");
+          cropOverlay.classList.add("active");
+          cropToolbar.classList.add("active");
+
+          const state = stateByCell.get(cell);
+          cellIndicator.textContent = cell.dataset.cellId;
+          syncToolbarFromState(state);
+        }
+
+        function exitCropMode() {
+          if (!activeCropCell) return;
+          
+          activeCropCell.classList.remove("crop-active", "is-dragging");
+          cropOverlay.classList.remove("active");
+          cropToolbar.classList.remove("active");
+          activeCropCell = null;
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Initialize Cells
+        // ─────────────────────────────────────────────────────────────
+
+        function initCells() {
+          cells.forEach((cell) => {
+            const img = cell.querySelector("img");
+            const state = {
+              cell,
+              img,
+              naturalW: 0,
+              naturalH: 0,
+              minScale: 1,
+              scale: 1,
+              tx: 0,
+              ty: 0,
+              prevCellW: 0,
+              prevCellH: 0,
+            };
+            stateByCell.set(cell, state);
+
+            const onImgReady = () => {
+              state.naturalW = img.naturalWidth || 1;
+              state.naturalH = img.naturalHeight || 1;
+              resetToCover(state);
+              scheduleLayoutUpdate();
+            };
+            img.addEventListener("load", onImgReady, { passive: true });
+            if (img.complete) onImgReady();
+
+            // Double-click to enter crop mode
+            cell.addEventListener("dblclick", (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              enterCropMode(cell);
+            });
+
+            // Mouse down for panning - initiate drag with document-level tracking
+            cell.addEventListener("mousedown", (e) => {
+              if (e.button !== 0) return;
+
+              // If clicking a different cell, switch to it
+              if (activeCropCell !== cell) {
+                if (cell.classList.contains("crop-active") || e.detail === 2) {
+                  // Will be handled by dblclick
+                  return;
+                }
+              }
+
+              if (!cell.classList.contains("crop-active")) return;
+
+              const s = stateByCell.get(cell);
+              cell.classList.add("is-dragging");
+              
+              // Store drag state globally for document-level tracking
+              currentDragState = {
+                cell,
+                state: s,
+                startX: e.clientX,
+                startY: e.clientY,
+                startTx: s.tx,
+                startTy: s.ty,
+              };
+              e.preventDefault();
+            });
+
+            // Wheel zoom when in crop mode
+            cell.addEventListener("wheel", (e) => {
+              if (!cell.classList.contains("crop-active")) return;
+              
+              e.preventDefault();
+              const s = stateByCell.get(cell);
+              const delta = e.deltaY;
+              if (!Number.isFinite(delta)) return;
+
+              const zoomStep = Math.exp(-delta * 0.0012);
+              const maxScale = s.minScale * ZOOM_FACTOR_MAX;
+              const next = clamp(s.scale * zoomStep, s.minScale, maxScale);
+              zoomAboutPoint(s, next, e.clientX, e.clientY);
+              syncToolbarFromState(s);
+            }, { passive: false });
+          });
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Toolbar Events
+        // ─────────────────────────────────────────────────────────────
+
+        function initToolbar() {
+          zoomSlider.addEventListener("input", () => {
+            if (!activeCropCell) return;
+            const s = stateByCell.get(activeCropCell);
+            if (!s) return;
+            setZoomFromSlider(s, zoomSlider.value);
+          });
+
+          resetBtn.addEventListener("click", () => {
+            if (!activeCropCell) return;
+            const s = stateByCell.get(activeCropCell);
+            if (!s) return;
+            resetToCover(s);
+            syncToolbarFromState(s);
+          });
+
+          // Prevent toolbar interactions from closing crop mode
+          cropToolbar.addEventListener("mousedown", (e) => e.stopPropagation());
+          cropToolbar.addEventListener("click", (e) => e.stopPropagation());
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Global Events
+        // ─────────────────────────────────────────────────────────────
+
+        // Document-level drag handling - allows panning to continue outside cell bounds
+        document.addEventListener("mousemove", (e) => {
+          if (!currentDragState) return;
+          
+          const { state, startX, startY, startTx, startTy } = currentDragState;
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          state.tx = startTx + dx;
+          state.ty = startTy + dy;
+          clampTranslate(state);
+          applyTransform(state);
+          e.preventDefault();
+        });
+
+        document.addEventListener("mouseup", () => {
+          if (!currentDragState) return;
+          currentDragState.cell.classList.remove("is-dragging");
+          currentDragState = null;
+        });
+
+        // Click on overlay to exit crop mode
+        cropOverlay.addEventListener("click", () => {
+          exitCropMode();
+        });
+
+        // Escape key to exit crop mode
+        document.addEventListener("keydown", (e) => {
+          if (e.key === "Escape" && activeCropCell) {
+            exitCropMode();
+          }
+        });
+
+        // Click outside cells/toolbar to exit
+        document.addEventListener("mousedown", (e) => {
+          const t = e.target;
+          if (cropToolbar.contains(t)) return;
+          if (t.closest && t.closest(".gutter")) return;
+          if (t.closest && t.closest(".cell")) return;
+          if (activeCropCell) exitCropMode();
+        });
+
+        // ─────────────────────────────────────────────────────────────
+        // Split.js Setup
+        // ─────────────────────────────────────────────────────────────
+
+        const commonOptions = {
+          gutterSize: GUTTER_SIZE,
+          snapOffset: 0,
+          onDrag: scheduleLayoutUpdate,
+          onDragEnd: scheduleLayoutUpdate,
+        };
+
+        Split(["#left-row-top", "#left-row-bottom"], {
+          ...commonOptions,
+          direction: "vertical",
+          sizes: [50, 50],
+          minSize: 90,
+          cursor: "row-resize",
+        });
+
+        Split(["#right-row-top", "#right-row-bottom"], {
+          ...commonOptions,
+          direction: "vertical",
+          sizes: [50, 50],
+          minSize: 90,
+          cursor: "row-resize",
+        });
+
+        const rowSelectors = ["#left-row-top", "#left-row-bottom", "#right-row-top", "#right-row-bottom"];
+        for (const rowSel of rowSelectors) {
+          const rowCells = document.querySelectorAll(`${rowSel} .cell`);
+          Split(rowCells, {
+            ...commonOptions,
+            direction: "horizontal",
+            sizes: [33.33, 33.34, 33.33],
+            minSize: 70,
+            cursor: "col-resize",
+          });
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // Spread Fit
+        // ─────────────────────────────────────────────────────────────
+
+        const updateSpreadFit = () => {
+          const margin = 36;
+          const availW = Math.max(320, window.innerWidth - margin);
+          const availH = Math.max(320, window.innerHeight - margin);
+
+          const PAD = 14;
+          const GAP = 10;
+          const PAGE_W = 35;
+          const PAGE_H = 29;
+
+          const heightForWidth = (w) => {
+            const innerW = Math.max(1, w - 2 * PAD - GAP);
+            const pageW = innerW / 2;
+            const pageH = pageW * (PAGE_H / PAGE_W);
+            return 2 * PAD + pageH;
+          };
+
+          const widthForHeight = (h) => {
+            const innerH = Math.max(1, h - 2 * PAD);
+            const pageW = innerH * (PAGE_W / PAGE_H);
+            const innerW = 2 * pageW;
+            return 2 * PAD + GAP + innerW;
+          };
+
+          let w = availW;
+          let h = heightForWidth(w);
+          if (h > availH) {
+            h = availH;
+            w = widthForHeight(h);
+          }
+
+          spread.style.width = `${Math.floor(w)}px`;
+          spread.style.height = `${Math.floor(h)}px`;
+          scheduleLayoutUpdate();
+        };
+
+        updateSpreadFit();
+        window.addEventListener("resize", updateSpreadFit, { passive: true });
+
+        // ─────────────────────────────────────────────────────────────
+        // Initialize
+        // ─────────────────────────────────────────────────────────────
+        initCells();
+        initToolbar();
+        scheduleLayoutUpdate();
+      });
+    </script>
+  </body>
+</html>

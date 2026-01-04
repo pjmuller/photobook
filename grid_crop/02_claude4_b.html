@@ -1,0 +1,585 @@
+<!-- works well -->
+<!-- remove the "new image" button, and move the zoom closer to the image instead of top right -->
+<!-- center the 2 pages -->
+<!-- (lower prio, only of easy) when I finish drag (and I exit outside of the cell), you unselect the image, but it should stay selected 
+when I stay in the cell, the image does stay selected 
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resizable Photo Album</title>
+    
+    <!-- Bootstrap 5.3 CSS CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+
+    <style>
+        /* --- General Layout & Album Styling --- */
+        body {
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f0f0;
+            overflow: hidden;
+        }
+
+        .album {
+            width: 100%;
+            max-width: 1800px;
+            background-color: #333;
+        }
+
+        .page {
+            /* Maintain the 35:29 aspect ratio */
+            aspect-ratio: 35 / 29;
+            background-color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .page-row {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            overflow: hidden;
+        }
+        
+        .cell {
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .cell:hover {
+            box-shadow: inset 0 0 0 2px #007bff;
+        }
+
+        .cell.active {
+            box-shadow: inset 0 0 0 3px #007bff;
+        }
+
+        .image-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            background: #f8f9fa;
+        }
+
+        .image-container img {
+            position: absolute;
+            cursor: move;
+            transition: none;
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+        }
+
+        /* --- Gutter Styling (for Split.js) --- */
+        .gutter {
+            background-color: #ffffff;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .gutter.gutter-vertical {
+            cursor: row-resize;
+        }
+
+        .gutter.gutter-horizontal {
+            cursor: col-resize;
+        }
+
+        /* --- Controls Panel --- */
+        .controls {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.8);
+            padding: 15px;
+            border-radius: 8px;
+            color: white;
+            display: none;
+            z-index: 1000;
+            min-width: 200px;
+        }
+
+        .controls.show {
+            display: block;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #ccc;
+        }
+
+        .zoom-slider {
+            width: 100%;
+            margin: 5px 0;
+        }
+
+        .btn-sm {
+            padding: 4px 8px;
+            font-size: 11px;
+        }
+
+        .loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #6c757d;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="album-container container-fluid">
+        <!-- Bootstrap row acts as the album, holding the two pages -->
+        <div class="row album g-4 justify-content-center">
+
+            <!-- Left Page -->
+            <div class="col-sm-6">
+                <div class="page" id="page-left">
+                    <div class="page-row" id="left-row-top">
+                        <div class="cell" data-page="left" data-row="1" data-col="1">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="left" data-row="1" data-col="2">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="left" data-row="1" data-col="3">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="page-row" id="left-row-bottom">
+                        <div class="cell" data-page="left" data-row="2" data-col="1">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="left" data-row="2" data-col="2">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="left" data-row="2" data-col="3">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Page -->
+            <div class="col-sm-6">
+                 <div class="page" id="page-right">
+                    <div class="page-row" id="right-row-top">
+                        <div class="cell" data-page="right" data-row="1" data-col="1">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="right" data-row="1" data-col="2">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="right" data-row="1" data-col="3">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="page-row" id="right-row-bottom">
+                        <div class="cell" data-page="right" data-row="2" data-col="1">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="right" data-row="2" data-col="2">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                        <div class="cell" data-page="right" data-row="2" data-col="3">
+                            <div class="image-container">
+                                <div class="loading-indicator">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Controls Panel -->
+    <div class="controls" id="controls">
+        <div class="control-group">
+            <label>Zoom Level</label>
+            <input type="range" class="zoom-slider" id="zoomSlider" min="100" max="500" value="100">
+            <small id="zoomValue">100%</small>
+        </div>
+        <div class="control-group">
+            <button class="btn btn-warning btn-sm w-100" id="newImageBtn">New Image</button>
+        </div>
+    </div>
+
+    <!-- Split.js CDN -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+    <script>
+        class PhotoAlbum {
+            constructor() {
+                this.activeCell = null;
+                this.currentImageData = new Map();
+                this.isDragging = false;
+                this.dragStart = { x: 0, y: 0 };
+                this.imageStart = { x: 0, y: 0 };
+                
+                this.init();
+            }
+
+            init() {
+                this.setupSplitters();
+                this.loadImages();
+                this.setupEventListeners();
+            }
+
+            setupSplitters() {
+                // Gutter size in pixels
+                const GUTTER_SIZE = 12; 
+                
+                // --- Initialize Page Splits (Top/Bottom Rows) ---
+                Split(['#left-row-top', '#left-row-bottom'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 100,
+                });
+
+                Split(['#right-row-top', '#right-row-bottom'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 100,
+                });
+
+                // --- Initialize Row Splits (Cells) ---
+                Split(document.querySelectorAll('#left-row-top .cell'), {
+                    direction: 'horizontal',
+                    sizes: [33.33, 33.34, 33.33],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 80,
+                });
+
+                Split(document.querySelectorAll('#left-row-bottom .cell'), {
+                    direction: 'horizontal',
+                    sizes: [33.33, 33.34, 33.33],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 80,
+                });
+
+                Split(document.querySelectorAll('#right-row-top .cell'), {
+                    direction: 'horizontal',
+                    sizes: [33.33, 33.34, 33.33],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 80,
+                });
+
+                Split(document.querySelectorAll('#right-row-bottom .cell'), {
+                    direction: 'horizontal',
+                    sizes: [33.33, 33.34, 33.33],
+                    gutterSize: GUTTER_SIZE,
+                    minSize: 80,
+                });
+            }
+
+            loadImages() {
+                const cells = document.querySelectorAll('.cell');
+                cells.forEach((cell, index) => {
+                    this.loadImageForCell(cell, index + 1);
+                });
+            }
+
+            loadImageForCell(cell, imageId) {
+                const container = cell.querySelector('.image-container');
+                const loadingIndicator = container.querySelector('.loading-indicator');
+                
+                // Generate unique image URL
+                const imageUrl = `https://picsum.photos/seed/${imageId}/800/600`;
+                
+                const img = new Image();
+                img.onload = () => {
+                    if (loadingIndicator) {
+                        loadingIndicator.remove();
+                    }
+                    
+                    img.style.position = 'absolute';
+                    img.style.cursor = 'move';
+                    container.appendChild(img);
+                    
+                    // Initialize image data
+                    this.currentImageData.set(cell, {
+                        img: img,
+                        scale: 1,
+                        x: 0,
+                        y: 0,
+                        naturalWidth: img.naturalWidth,
+                        naturalHeight: img.naturalHeight
+                    });
+                    
+                    this.fillImageToCell(cell);
+                };
+                
+                img.onerror = () => {
+                    if (loadingIndicator) {
+                        loadingIndicator.textContent = 'Failed to load';
+                    }
+                };
+                
+                img.src = imageUrl;
+            }
+
+            fillImageToCell(cell) {
+                const data = this.currentImageData.get(cell);
+                if (!data) return;
+                
+                const container = cell.querySelector('.image-container');
+                const containerRect = container.getBoundingClientRect();
+                
+                // Calculate scale to fill (cover the entire cell)
+                const scaleX = containerRect.width / data.naturalWidth;
+                const scaleY = containerRect.height / data.naturalHeight;
+                const scale = Math.max(scaleX, scaleY);
+                
+                data.scale = scale;
+                data.x = (containerRect.width - data.naturalWidth * scale) / 2;
+                data.y = (containerRect.height - data.naturalHeight * scale) / 2;
+                
+                this.updateImageTransform(cell);
+            }
+
+            updateImageTransform(cell) {
+                const data = this.currentImageData.get(cell);
+                if (!data) return;
+                
+                const { img, scale, x, y } = data;
+                img.style.width = `${data.naturalWidth * scale}px`;
+                img.style.height = `${data.naturalHeight * scale}px`;
+                img.style.left = `${x}px`;
+                img.style.top = `${y}px`;
+            }
+
+            constrainImagePosition(cell) {
+                const data = this.currentImageData.get(cell);
+                if (!data) return;
+                
+                const container = cell.querySelector('.image-container');
+                const containerRect = container.getBoundingClientRect();
+                
+                const imageWidth = data.naturalWidth * data.scale;
+                const imageHeight = data.naturalHeight * data.scale;
+                
+                // Constrain to prevent whitespace
+                const maxX = 0;
+                const minX = containerRect.width - imageWidth;
+                const maxY = 0;
+                const minY = containerRect.height - imageHeight;
+                
+                data.x = Math.max(minX, Math.min(maxX, data.x));
+                data.y = Math.max(minY, Math.min(maxY, data.y));
+                
+                this.updateImageTransform(cell);
+            }
+
+            setActiveCell(cell) {
+                // Remove active class from all cells
+                document.querySelectorAll('.cell').forEach(c => c.classList.remove('active'));
+                
+                this.activeCell = cell;
+                if (cell) {
+                    cell.classList.add('active');
+                    this.showControls();
+                    this.updateControlsForCell(cell);
+                } else {
+                    this.hideControls();
+                }
+            }
+
+            showControls() {
+                document.getElementById('controls').classList.add('show');
+            }
+
+            hideControls() {
+                document.getElementById('controls').classList.remove('show');
+            }
+
+            updateControlsForCell(cell) {
+                const data = this.currentImageData.get(cell);
+                if (!data) return;
+                
+                const zoomSlider = document.getElementById('zoomSlider');
+                const zoomValue = document.getElementById('zoomValue');
+                
+                // Calculate the minimum scale needed to fill the cell
+                const container = cell.querySelector('.image-container');
+                const containerRect = container.getBoundingClientRect();
+                const scaleX = containerRect.width / data.naturalWidth;
+                const scaleY = containerRect.height / data.naturalHeight;
+                const minScale = Math.max(scaleX, scaleY);
+                
+                const zoomPercent = Math.round((data.scale / minScale) * 100);
+                zoomSlider.value = zoomPercent;
+                zoomValue.textContent = `${zoomPercent}%`;
+            }
+
+            setupEventListeners() {
+                // Cell click handlers
+                document.querySelectorAll('.cell').forEach(cell => {
+                    cell.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.setActiveCell(cell);
+                    });
+                });
+
+                // Image drag handlers
+                document.addEventListener('mousedown', (e) => {
+                    if (e.target.tagName === 'IMG' && this.activeCell) {
+                        e.preventDefault();
+                        this.isDragging = true;
+                        this.dragStart = { x: e.clientX, y: e.clientY };
+                        
+                        const data = this.currentImageData.get(this.activeCell);
+                        if (data) {
+                            this.imageStart = { x: data.x, y: data.y };
+                        }
+                    }
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (this.isDragging && this.activeCell) {
+                        e.preventDefault();
+                        const data = this.currentImageData.get(this.activeCell);
+                        if (data) {
+                            const deltaX = e.clientX - this.dragStart.x;
+                            const deltaY = e.clientY - this.dragStart.y;
+                            
+                            data.x = this.imageStart.x + deltaX;
+                            data.y = this.imageStart.y + deltaY;
+                            
+                            this.constrainImagePosition(this.activeCell);
+                        }
+                    }
+                });
+
+                document.addEventListener('mouseup', () => {
+                    this.isDragging = false;
+                });
+
+                // Click outside to deselect
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.cell') && !e.target.closest('.controls')) {
+                        this.setActiveCell(null);
+                    }
+                });
+
+                // Zoom slider
+                document.getElementById('zoomSlider').addEventListener('input', (e) => {
+                    if (this.activeCell) {
+                        const data = this.currentImageData.get(this.activeCell);
+                        if (data) {
+                            const container = this.activeCell.querySelector('.image-container');
+                            const containerRect = container.getBoundingClientRect();
+                            
+                            // Calculate minimum scale to fill the cell
+                            const scaleX = containerRect.width / data.naturalWidth;
+                            const scaleY = containerRect.height / data.naturalHeight;
+                            const minScale = Math.max(scaleX, scaleY);
+                            
+                            // Calculate new scale based on slider (100% = minScale)
+                            const zoomPercent = parseInt(e.target.value);
+                            const newScale = minScale * (zoomPercent / 100);
+                            
+                            // Adjust position to zoom towards center
+                            const centerX = containerRect.width / 2;
+                            const centerY = containerRect.height / 2;
+                            
+                            const scaleRatio = newScale / data.scale;
+                            data.x = centerX - (centerX - data.x) * scaleRatio;
+                            data.y = centerY - (centerY - data.y) * scaleRatio;
+                            data.scale = newScale;
+                            
+                            this.constrainImagePosition(this.activeCell);
+                            document.getElementById('zoomValue').textContent = `${e.target.value}%`;
+                        }
+                    }
+                });
+
+                // New image button
+                document.getElementById('newImageBtn').addEventListener('click', () => {
+                    if (this.activeCell) {
+                        // Clear current image
+                        const container = this.activeCell.querySelector('.image-container');
+                        const img = container.querySelector('img');
+                        if (img) {
+                            img.remove();
+                        }
+                        
+                        // Add loading indicator
+                        const loadingIndicator = document.createElement('div');
+                        loadingIndicator.className = 'loading-indicator';
+                        loadingIndicator.textContent = 'Loading...';
+                        container.appendChild(loadingIndicator);
+                        
+                        // Load new image
+                        const randomId = Math.floor(Math.random() * 1000) + 1000;
+                        this.loadImageForCell(this.activeCell, randomId);
+                    }
+                });
+
+                // Window resize handler
+                window.addEventListener('resize', () => {
+                    // Re-fill all images on window resize
+                    setTimeout(() => {
+                        this.currentImageData.forEach((data, cell) => {
+                            this.fillImageToCell(cell);
+                        });
+                    }, 100);
+                });
+            }
+        }
+
+        // Initialize the photo album when DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            new PhotoAlbum();
+        });
+    </script>
+</body>
+</html>

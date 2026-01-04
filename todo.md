@@ -1,9 +1,19 @@
 todo
 
+separate prompt with ONLY with resizing gutters, single page, use 5 placeholder images? Try it 5x different ways. Find a way without explicit pixels.
+
+
 define the default crop behavior x,y,width,height better
 
 learn more about cropping parameters (via AI)
 I guess there is some redundancy in having both focalPoint and the full set of crop_x?
+
+write the mathical functions together with tests
+- changing layouts
+- resizing based on changing the gutter
+
+and let the main project use this CORE without having to rewrite it every single time
+(and/or extract it from a couple of generated index.html files via AI -> take the best parts) and just instruct the AI to use it (saying which high level interface it has)
 
 
 - modal doesn't close

@@ -1,0 +1,405 @@
+<!-- Doesn't work well, completely disformed -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resizable Photo Album</title>
+    
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Split.js -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: #2c2c2c;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .album-container {
+            width: 100%;
+            max-width: 100%;
+            display: flex;
+            gap: 20px;
+            height: calc(100vh - 40px);
+            max-height: calc((100vw - 60px) * 29 / 70);
+        }
+        
+        .page {
+            flex: 1;
+            background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            aspect-ratio: 35/29;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            position: relative;
+        }
+        
+        .row {
+            display: flex;
+            width: 100%;
+            height: 50%;
+        }
+        
+        .cell {
+            width: 33.333%;
+            height: 100%;
+            padding: 5px;
+            position: relative;
+            overflow: hidden;
+            background: #f0f0f0;
+            border: 1px solid #ddd;
+        }
+        
+        .image-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+            cursor: move;
+            user-select: none;
+        }
+        
+        .image-container img {
+            position: absolute;
+            transform-origin: center center;
+            transition: none;
+            pointer-events: none;
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+        }
+        
+        .cell-controls {
+            position: absolute;
+            bottom: 5px;
+            right: 5px;
+            background: rgba(0,0,0,0.7);
+            padding: 5px;
+            border-radius: 5px;
+            display: none;
+            z-index: 10;
+        }
+        
+        .cell:hover .cell-controls {
+            display: block;
+        }
+        
+        .zoom-slider {
+            width: 80px;
+            height: 20px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #555;
+            outline: none;
+            opacity: 0.9;
+            transition: opacity 0.2s;
+        }
+        
+        .zoom-slider:hover {
+            opacity: 1;
+        }
+        
+        .zoom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        .zoom-slider::-moz-range-thumb {
+            width: 15px;
+            height: 15px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        /* Gutter styles */
+        .gutter {
+            background-color: transparent;
+            background-repeat: no-repeat;
+            background-position: 50%;
+            position: relative;
+        }
+        
+        .gutter.gutter-horizontal {
+            cursor: ew-resize;
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeMwF+yNnOs5KSvgAAAABJRU5ErkJggg==');
+        }
+        
+        .gutter.gutter-horizontal::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: -5px;
+            right: -5px;
+        }
+        
+        .gutter.gutter-vertical {
+            cursor: ns-resize;
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
+        }
+        
+        .gutter.gutter-vertical::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: -5px;
+            bottom: -5px;
+        }
+        
+        .split {
+            display: flex;
+        }
+        
+        .split-horizontal > .gutter.gutter-horizontal {
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div class="album-container">
+        <!-- Left Page -->
+        <div class="page" id="left-page">
+            <div class="row" id="left-row-1">
+                <div class="cell" id="left-cell-1">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=1" alt="Photo 1">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="left-cell-2">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=2" alt="Photo 2">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="left-cell-3">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=3" alt="Photo 3">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+            </div>
+            <div class="row" id="left-row-2">
+                <div class="cell" id="left-cell-4">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=4" alt="Photo 4">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="left-cell-5">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=5" alt="Photo 5">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="left-cell-6">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=6" alt="Photo 6">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Right Page -->
+        <div class="page" id="right-page">
+            <div class="row" id="right-row-1">
+                <div class="cell" id="right-cell-1">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=7" alt="Photo 7">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="right-cell-2">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=8" alt="Photo 8">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="right-cell-3">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=9" alt="Photo 9">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+            </div>
+            <div class="row" id="right-row-2">
+                <div class="cell" id="right-cell-4">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=10" alt="Photo 10">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="right-cell-5">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=11" alt="Photo 11">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+                <div class="cell" id="right-cell-6">
+                    <div class="image-container">
+                        <img src="https://picsum.photos/400/300?random=12" alt="Photo 12">
+                    </div>
+                    <div class="cell-controls">
+                        <input type="range" class="zoom-slider" min="100" max="300" value="100">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Initialize Split.js for vertical splits between rows
+        Split(['#left-row-1', '#left-row-2'], {
+            direction: 'vertical',
+            sizes: [50, 50],
+            minSize: 100,
+            gutterSize: 10
+        });
+        
+        Split(['#right-row-1', '#right-row-2'], {
+            direction: 'vertical',
+            sizes: [50, 50],
+            minSize: 100,
+            gutterSize: 10
+        });
+        
+        // Initialize Split.js for horizontal splits within each row
+        Split(['#left-cell-1', '#left-cell-2', '#left-cell-3'], {
+            sizes: [33.333, 33.333, 33.334],
+            minSize: 50,
+            gutterSize: 10
+        });
+        
+        Split(['#left-cell-4', '#left-cell-5', '#left-cell-6'], {
+            sizes: [33.333, 33.333, 33.334],
+            minSize: 50,
+            gutterSize: 10
+        });
+        
+        Split(['#right-cell-1', '#right-cell-2', '#right-cell-3'], {
+            sizes: [33.333, 33.333, 33.334],
+            minSize: 50,
+            gutterSize: 10
+        });
+        
+        Split(['#right-cell-4', '#right-cell-5', '#right-cell-6'], {
+            sizes: [33.333, 33.333, 33.334],
+            minSize: 50,
+            gutterSize: 10
+        });
+        
+        // Image manipulation functionality
+        document.querySelectorAll('.cell').forEach(cell => {
+            const container = cell.querySelector('.image-container');
+            const img = container.querySelector('img');
+            const slider = cell.querySelector('.zoom-slider');
+            
+            let isDragging = false;
+            let startX, startY;
+            let currentX = 0, currentY = 0;
+            let scale = 1;
+            
+            // Zoom functionality
+            slider.addEventListener('input', (e) => {
+                scale = e.target.value / 100;
+                updateImageTransform();
+            });
+            
+            // Pan functionality
+            container.addEventListener('mousedown', (e) => {
+                if (scale > 1) {
+                    isDragging = true;
+                    startX = e.clientX - currentX;
+                    startY = e.clientY - currentY;
+                    container.style.cursor = 'grabbing';
+                }
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    e.preventDefault();
+                    currentX = e.clientX - startX;
+                    currentY = e.clientY - startY;
+                    
+                    // Calculate boundaries to prevent showing whitespace
+                    const containerRect = container.getBoundingClientRect();
+                    const imgWidth = img.naturalWidth * scale;
+                    const imgHeight = img.naturalHeight * scale;
+                    
+                    const maxX = Math.max(0, (imgWidth - containerRect.width) / 2);
+                    const maxY = Math.max(0, (imgHeight - containerRect.height) / 2);
+                    
+                    currentX = Math.max(-maxX, Math.min(maxX, currentX));
+                    currentY = Math.max(-maxY, Math.min(maxY, currentY));
+                    
+                    updateImageTransform();
+                }
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                container.style.cursor = 'move';
+            });
+            
+            function updateImageTransform() {
+                img.style.transform = `translate(${currentX}px, ${currentY}px) scale(${scale})`;
+                img.style.width = `${Math.max(100, scale * 100)}%`;
+                img.style.height = `${Math.max(100, scale * 100)}%`;
+                img.style.left = '50%';
+                img.style.top = '50%';
+                img.style.transform = `translate(-50%, -50%) translate(${currentX}px, ${currentY}px) scale(${scale})`;
+            }
+            
+            // Prevent slider from triggering pan
+            slider.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+            });
+        });
+    </script>
+</body>
+</html>

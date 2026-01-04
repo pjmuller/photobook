@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album - v4: CSS-Centric</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body { background-color: #333; color: #fff; overflow-x: hidden; }
+        .album-container { display: flex; width: 100%; padding: 20px; box-sizing: border-box; }
+        .page { aspect-ratio: 35 / 29; width: 50%; display: flex; flex-direction: column; background-color: #1a1a1a; border: 2px solid #555; }
+        .page-row { display: flex; }
+        .cell {
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+            border: 1px solid #444;
+        }
+        .cell img {
+            width: 100%;
+            height: 100%;
+            /* The key CSS properties for this approach */
+            object-fit: cover;
+            object-position: 50% 50%; /* Start centered */
+            transform-origin: 50% 50%;
+            cursor: grab;
+            user-select: none;
+            will-change: transform, object-position;
+        }
+        .cell img:active { cursor: grabbing; }
+        .controls { position: absolute; bottom: 5px; left: 5px; right: 5px; z-index: 10; display: flex; align-items: center; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 5px; opacity: 0; transition: opacity 0.3s; }
+        .cell:hover .controls { opacity: 1; }
+        .controls input[type="range"] { width: 100%; }
+        .gutter { background-color: #555; }
+        .gutter.gutter-horizontal { cursor: ns-resize; height: 10px; }
+        .gutter.gutter-vertical { cursor: ew-resize; width: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid text-center p-3">
+        <h1>Photo Album - Version 4: CSS-Centric Minimalist</h1>
+        <p class="text-muted">Uses CSS <code>object-fit</code> and <code>object-position</code> to simplify pan/zoom JavaScript.</p>
+    </div>
+    <!-- HTML is identical to Version 1 -->
+    <div class="album-container">
+        <div class="page" id="page-left">
+            <div class="page-row" id="page-left-row1">
+                <div class="cell" id="c1"></div><div class="cell" id="c2"></div><div class="cell" id="c3"></div>
+            </div>
+            <div class="page-row" id="page-left-row2">
+                <div class="cell" id="c4"></div><div class="cell" id="c5"></div><div class="cell" id="c6"></div>
+            </div>
+        </div>
+        <div class="page" id="page-right">
+            <div class="page-row" id="page-right-row1">
+                <div class="cell" id="c7"></div><div class="cell" id="c8"></div><div class="cell" id="c9"></div>
+            </div>
+            <div class="page-row" id="page-right-row2">
+                <div class="cell" id="c10"></div><div class="cell" id="c11"></div><div class="cell" id="c12"></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Gutter Setup ---
+    ['page-left', 'page-right'].forEach(pageId => {
+        Split([`#${pageId}-row1`, `#${pageId}-row2`], { direction: 'vertical', sizes: [50, 50], minSize: 100, gutterSize: 10 });
+    });
+    ['page-left-row1', 'page-left-row2', 'page-right-row1', 'page-right-row2'].forEach(rowId => {
+        const children = Array.from(document.getElementById(rowId).children).map(c => `#${c.id}`);
+        Split(children, { sizes: [33.3, 33.3, 33.3], minSize: 50, gutterSize: 10 });
+    });
+
+    // --- CSS-Centric Cropping Logic ---
+    document.querySelectorAll('.cell').forEach((cell, index) => {
+        // Create elements
+        cell.innerHTML = `
+            <img src="https://picsum.photos/800/600?random=${index + 1}" alt="Placeholder">
+            <div class="controls"><input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1"></div>
+        `;
+        const img = cell.querySelector('img');
+        const zoomSlider = cell.querySelector('.zoom-slider');
+
+        let state = {
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            posX: 50, // Start at 50%
+            posY: 50,
+        };
+
+        zoomSlider.addEventListener('input', (e) => {
+            img.style.transform = `scale(${e.target.value})`;
+        });
+
+        img.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            state.isDragging = true;
+            // Capture starting mouse position and the current percentage
+            state.startX = e.clientX;
+            state.startY = e.clientY;
+            // Read current position from style
+            const [xStr, yStr] = img.style.objectPosition.split(' ');
+            state.posX = parseFloat(xStr);
+            state.posY = parseFloat(yStr);
+            img.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging) return;
+            const dx = e.clientX - state.startX;
+            const dy = e.clientY - state.startY;
+
+            // Convert pixel delta to percentage delta
+            const newPosX = state.posX - (dx / cell.clientWidth) * 100;
+            const newPosY = state.posY - (dy / cell.clientHeight) * 100;
+
+            // Clamp values between 0% and 100%
+            const clampedX = Math.max(0, Math.min(100, newPosX));
+            const clampedY = Math.max(0, Math.min(100, newPosY));
+
+            img.style.objectPosition = `${clampedX}% ${clampedY}%`;
+        });
+
+        window.addEventListener('mouseup', () => {
+            state.isDragging = false;
+            img.style.cursor = 'grab';
+        });
+    });
+});
+</script>
+</body>
+</html>

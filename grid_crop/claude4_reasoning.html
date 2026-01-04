@@ -1,0 +1,445 @@
+<!-- gutters don't work -->
+<!-- moving the image doesn't work on mousedown, feels like unreliable behavior -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resizable Photo Album</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            font-family: Arial, sans-serif;
+        }
+
+        .album-container {
+            width: 100%;
+            max-width: 100vw;
+            margin: 0 auto;
+            background: white;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        .pages-spread {
+            display: flex;
+            width: 100%;
+            aspect-ratio: 70/29; /* Two pages side by side: (35+35):29 */
+        }
+
+        .page {
+            flex: 1;
+            aspect-ratio: 35/29;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border: 1px solid #ddd;
+        }
+
+        .page-left {
+            border-right: 2px solid #333;
+        }
+
+        .row-container {
+            flex: 1;
+            display: flex;
+        }
+
+        .cell {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            border: 1px solid #eee;
+            background: #f9f9f9;
+        }
+
+        .image-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        .image-container:active {
+            cursor: grabbing;
+        }
+
+        .cell-image {
+            position: absolute;
+            min-width: 100%;
+            min-height: 100%;
+            object-fit: cover;
+            transform-origin: center center;
+            transition: transform 0.1s ease-out;
+        }
+
+        .crop-controls {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 4px;
+            padding: 5px;
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            z-index: 10;
+        }
+
+        .cell:hover .crop-controls {
+            display: flex;
+        }
+
+        .zoom-slider {
+            width: 80px;
+            height: 20px;
+        }
+
+        .zoom-label {
+            color: white;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        /* Split.js gutter styles */
+        .gutter {
+            background-color: #333;
+            background-repeat: no-repeat;
+            background-position: 50%;
+        }
+
+        .gutter.gutter-horizontal {
+            height: 6px;
+            cursor: row-resize;
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+YMQwYBxVH/VfyhJjHjrwGkf4QGXwQ/yt8AAFXXAo9MFPh+AAAAAElFTkSuQmCC');
+        }
+
+        .gutter.gutter-vertical {
+            width: 6px;
+            cursor: col-resize;
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAFAQMAAABo7865AAAABlBMVEVHcEzMzMzyAv2sAAAAAXRSTlMAQObYZgAAABBJREFUeF5jOAMEEAIEEFwAn3kMwcB6I2AAAAAASUVORK5CYII=');
+        }
+
+        .split {
+            display: flex;
+        }
+
+        .split.split-horizontal {
+            flex-direction: column;
+        }
+
+        .split.split-vertical {
+            flex-direction: row;
+        }
+
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+            
+            .crop-controls {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="album-container">
+        <div class="pages-spread">
+            <!-- Left Page -->
+            <div class="page page-left" id="page-left">
+                <div class="row-container" id="left-row-1">
+                    <div class="cell" id="cell-1">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=1" alt="Photo 1">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-2">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=2" alt="Photo 2">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-3">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=3" alt="Photo 3">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                </div>
+                <div class="row-container" id="left-row-2">
+                    <div class="cell" id="cell-4">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=4" alt="Photo 4">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-5">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=5" alt="Photo 5">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-6">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=6" alt="Photo 6">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Page -->
+            <div class="page page-right" id="page-right">
+                <div class="row-container" id="right-row-1">
+                    <div class="cell" id="cell-7">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=7" alt="Photo 7">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-8">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=8" alt="Photo 8">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-9">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=9" alt="Photo 9">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                </div>
+                <div class="row-container" id="right-row-2">
+                    <div class="cell" id="cell-10">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=10" alt="Photo 10">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-11">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=11" alt="Photo 11">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                    <div class="cell" id="cell-12">
+                        <div class="image-container">
+                            <img class="cell-image" src="https://picsum.photos/400/300?random=12" alt="Photo 12">
+                        </div>
+                        <div class="crop-controls">
+                            <div class="zoom-label">Zoom</div>
+                            <input type="range" class="zoom-slider" min="1" max="3" step="0.1" value="1">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PhotoAlbum {
+            constructor() {
+                this.initializeSplitters();
+                this.initializeImageControls();
+            }
+
+            initializeSplitters() {
+                // Split each page horizontally (between rows)
+                Split(['#left-row-1', '#left-row-2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    minSize: 100,
+                    gutterSize: 6,
+                    cursor: 'row-resize'
+                });
+
+                Split(['#right-row-1', '#right-row-2'], {
+                    direction: 'vertical',
+                    sizes: [50, 50],
+                    minSize: 100,
+                    gutterSize: 6,
+                    cursor: 'row-resize'
+                });
+
+                // Split each row vertically (between cells)
+                ['left-row-1', 'left-row-2', 'right-row-1', 'right-row-2'].forEach(rowId => {
+                    const row = document.getElementById(rowId);
+                    const cells = Array.from(row.children).filter(child => child.classList.contains('cell'));
+                    const cellIds = cells.map(cell => `#${cell.id}`);
+                    
+                    Split(cellIds, {
+                        direction: 'horizontal',
+                        sizes: [33.33, 33.33, 33.33],
+                        minSize: 50,
+                        gutterSize: 6,
+                        cursor: 'col-resize'
+                    });
+                });
+            }
+
+            initializeImageControls() {
+                document.querySelectorAll('.cell').forEach(cell => {
+                    const imageContainer = cell.querySelector('.image-container');
+                    const image = cell.querySelector('.cell-image');
+                    const zoomSlider = cell.querySelector('.zoom-slider');
+
+                    let isDragging = false;
+                    let startX, startY;
+                    let currentX = 0, currentY = 0;
+                    let scale = 1;
+
+                    // Zoom functionality
+                    zoomSlider.addEventListener('input', (e) => {
+                        scale = parseFloat(e.target.value);
+                        this.updateImageTransform(image, currentX, currentY, scale);
+                    });
+
+                    // Pan functionality
+                    imageContainer.addEventListener('mousedown', (e) => {
+                        isDragging = true;
+                        startX = e.clientX - currentX;
+                        startY = e.clientY - currentY;
+                        image.style.transition = 'none';
+                    });
+
+                    document.addEventListener('mousemove', (e) => {
+                        if (!isDragging) return;
+                        
+                        e.preventDefault();
+                        currentX = e.clientX - startX;
+                        currentY = e.clientY - startY;
+                        
+                        // Constrain movement to prevent whitespace
+                        const containerRect = imageContainer.getBoundingClientRect();
+                        const imageRect = image.getBoundingClientRect();
+                        
+                        // Calculate bounds
+                        const maxX = Math.max(0, (imageRect.width - containerRect.width) / 2);
+                        const maxY = Math.max(0, (imageRect.height - containerRect.height) / 2);
+                        
+                        currentX = Math.max(-maxX, Math.min(maxX, currentX));
+                        currentY = Math.max(-maxY, Math.min(maxY, currentY));
+                        
+                        this.updateImageTransform(image, currentX, currentY, scale);
+                    });
+
+                    document.addEventListener('mouseup', () => {
+                        if (isDragging) {
+                            isDragging = false;
+                            image.style.transition = 'transform 0.1s ease-out';
+                        }
+                    });
+
+                    // Touch events for mobile
+                    imageContainer.addEventListener('touchstart', (e) => {
+                        isDragging = true;
+                        const touch = e.touches[0];
+                        startX = touch.clientX - currentX;
+                        startY = touch.clientY - currentY;
+                        image.style.transition = 'none';
+                    });
+
+                    document.addEventListener('touchmove', (e) => {
+                        if (!isDragging) return;
+                        
+                        e.preventDefault();
+                        const touch = e.touches[0];
+                        currentX = touch.clientX - startX;
+                        currentY = touch.clientY - startY;
+                        
+                        // Constrain movement
+                        const containerRect = imageContainer.getBoundingClientRect();
+                        const imageRect = image.getBoundingClientRect();
+                        
+                        const maxX = Math.max(0, (imageRect.width - containerRect.width) / 2);
+                        const maxY = Math.max(0, (imageRect.height - containerRect.height) / 2);
+                        
+                        currentX = Math.max(-maxX, Math.min(maxX, currentX));
+                        currentY = Math.max(-maxY, Math.min(maxY, currentY));
+                        
+                        this.updateImageTransform(image, currentX, currentY, scale);
+                    });
+
+                    document.addEventListener('touchend', () => {
+                        if (isDragging) {
+                            isDragging = false;
+                            image.style.transition = 'transform 0.1s ease-out';
+                        }
+                    });
+
+                    // Reset position when image loads
+                    image.addEventListener('load', () => {
+                        currentX = 0;
+                        currentY = 0;
+                        scale = 1;
+                        zoomSlider.value = 1;
+                        this.updateImageTransform(image, currentX, currentY, scale);
+                    });
+                });
+            }
+
+            updateImageTransform(image, x, y, scale) {
+                image.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+            }
+        }
+
+        // Initialize the photo album when the page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new PhotoAlbum();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            // Reset image positions on resize to prevent layout issues
+            document.querySelectorAll('.cell-image').forEach(image => {
+                image.style.transform = 'translate(0px, 0px) scale(1)';
+            });
+            document.querySelectorAll('.zoom-slider').forEach(slider => {
+                slider.value = 1;
+            });
+        });
+    </script>
+</body>
+</html>

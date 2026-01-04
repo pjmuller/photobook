@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album - v3: Object-Oriented</title>
+    <!-- Dependencies are the same as Version 1 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <style>
+        /* CSS is identical to Version 1 */
+        body { background-color: #333; color: #fff; overflow-x: hidden; }
+        .album-container { display: flex; width: 100%; padding: 20px; box-sizing: border-box; }
+        .page { aspect-ratio: 35 / 29; width: 50%; display: flex; flex-direction: column; background-color: #1a1a1a; border: 2px solid #555; }
+        .page-row { display: flex; }
+        .cell { position: relative; overflow: hidden; background-color: #000; border: 1px solid #444; }
+        .cell img { position: absolute; width: 100%; height: 100%; object-fit: cover; cursor: grab; user-select: none; will-change: transform; }
+        .cell img:active { cursor: grabbing; }
+        .controls { position: absolute; bottom: 5px; left: 5px; right: 5px; z-index: 10; display: flex; align-items: center; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 5px; opacity: 0; transition: opacity 0.3s; }
+        .cell:hover .controls { opacity: 1; }
+        .controls input[type="range"] { width: 100%; }
+        .gutter { background-color: #555; }
+        .gutter.gutter-horizontal { cursor: ns-resize; height: 10px; }
+        .gutter.gutter-vertical { cursor: ew-resize; width: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid text-center p-3">
+        <h1>Photo Album - Version 3: Object-Oriented Approach</h1>
+        <p class="text-muted">Logic is encapsulated in a <code>PhotoCell</code> class for better organization and scalability.</p>
+    </div>
+    <!-- HTML structure is a template to be populated by JS -->
+    <div class="album-container">
+        <div class="page" id="page-left">
+            <div class="page-row"></div>
+            <div class="page-row"></div>
+        </div>
+        <div class="page" id="page-right">
+            <div class="page-row"></div>
+            <div class="page-row"></div>
+        </div>
+    </div>
+
+<script>
+// --- The PhotoCell Class ---
+class PhotoCell {
+    constructor(container, imageUrl) {
+        this.container = container;
+        this.imageUrl = imageUrl;
+        
+        // State
+        this.isDragging = false;
+        this.startPos = { x: 0, y: 0 };
+        this.translation = { x: 0, y: 0 };
+        this.zoomLevel = 1;
+
+        this.render();
+        this.attachEventListeners();
+    }
+
+    render() {
+        this.container.innerHTML = `
+            <img src="${this.imageUrl}" alt="Placeholder Image">
+            <div class="controls">
+                <input type="range" class="zoom-slider" min="1" max="5" step="0.1" value="1">
+            </div>
+        `;
+        this.image = this.container.querySelector('img');
+        this.zoomSlider = this.container.querySelector('.zoom-slider');
+    }
+
+    attachEventListeners() {
+        this.zoomSlider.addEventListener('input', (e) => this.zoom(parseFloat(e.target.value)));
+        
+        this.image.addEventListener('mousedown', this.startPan.bind(this));
+        // Use window for mousemove/up to catch mouse leaving the element
+        window.addEventListener('mousemove', this.pan.bind(this));
+        window.addEventListener('mouseup', this.endPan.bind(this));
+    }
+    
+    updateTransform() {
+        const { zoomLevel } = this;
+        let { x, y } = this.translation;
+
+        // Constraint logic
+        const imgRect = this.image.getBoundingClientRect();
+        const cellRect = this.container.getBoundingClientRect();
+        const maxPanX = (imgRect.width * zoomLevel - cellRect.width) / 2 / zoomLevel;
+        const maxPanY = (imgRect.height * zoomLevel - cellRect.height) / 2 / zoomLevel;
+
+        x = Math.max(-maxPanX, Math.min(maxPanX, x));
+        y = Math.max(-maxPanY, Math.min(maxPanY, y));
+
+        this.translation = { x, y };
+        this.image.style.transform = `scale(${this.zoomLevel}) translate(${x}px, ${y}px)`;
+    }
+
+    zoom(level) {
+        this.zoomLevel = level;
+        this.updateTransform();
+    }
+
+    startPan(e) {
+        e.preventDefault();
+        this.isDragging = true;
+        this.image.style.cursor = 'grabbing';
+        this.startPos = {
+            x: e.clientX - this.translation.x * this.zoomLevel,
+            y: e.clientY - this.translation.y * this.zoomLevel
+        };
+    }
+    
+    pan(e) {
+        if (!this.isDragging) return;
+        this.translation.x = (e.clientX - this.startPos.x) / this.zoomLevel;
+        this.translation.y = (e.clientY - this.startPos.y) / this.zoomLevel;
+        this.updateTransform();
+    }
+
+    endPan() {
+        this.isDragging = false;
+        this.image.style.cursor = 'grab';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Dynamic Cell Creation & Initialization ---
+    const pageRows = document.querySelectorAll('.page-row');
+    let cellCounter = 0;
+    
+    pageRows.forEach(row => {
+        for (let i = 0; i < 3; i++) {
+            cellCounter++;
+            const cellEl = document.createElement('div');
+            cellEl.className = 'cell';
+            cellEl.id = `cell-${cellCounter}`;
+            row.appendChild(cellEl);
+            new PhotoCell(cellEl, `https://picsum.photos/800/600?random=${cellCounter}`);
+        }
+    });
+
+    // --- Gutter Initialization using Split.js ---
+    Split(['#page-left > .page-row', '#page-right > .page-row'], {
+        direction: 'vertical', sizes: [50, 50], minSize: 100, gutterSize: 10,
+    });
+    
+    document.querySelectorAll('.page-row').forEach(row => {
+        Split(Array.from(row.children), {
+            sizes: [33.3, 33.3, 33.3], minSize: 50, gutterSize: 10,
+        });
+    });
+});
+</script>
+</body>
+</html>

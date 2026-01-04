@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Resizable Photo Album Grid (Cropping)</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
+      crossorigin="anonymous"
+    />
+
+    <style>
+      :root {
+        --gutter: 7px;
+        --page-bg: #ffffff;
+        --album-bg: #2b2f36;
+        --app-bg: #0f1115;
+        --hint-fg: rgba(255, 255, 255, 0.75);
+        --hint-bg: rgba(0, 0, 0, 0.35);
+        --hint-border: rgba(255, 255, 255, 0.18);
+        --accent-color: #0d6efd;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(1200px 700px at 50% 10%, #1b2230 0%, var(--app-bg) 55%, #0b0d11 100%);
+        overflow: hidden; /* keep drag clean */
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 18px;
+      }
+
+      /* Spread: maximize within viewport while keeping the full 2-page aspect (70:29) */
+      .spread {
+        width: 100%;
+        height: 100%;
+        max-width: 100vw;
+        max-height: calc(100vh - 36px);
+        background: linear-gradient(90deg, #20242c 0%, var(--album-bg) 50%, #20242c 100%);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+        display: flex;
+        gap: 10px; /* spine gap between pages */
+        align-items: stretch;
+        justify-content: center;
+      }
+
+      .page {
+        flex: 1 1 0;
+        background: var(--page-bg);
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 8px 18px rgba(0, 0, 0, 0.25);
+        display: flex;
+        flex-direction: column;
+        position: relative;
+      }
+
+      /* Split.js expects flex parents for its panes */
+      .page-row {
+        display: flex;
+        width: 100%;
+        overflow: hidden;
+      }
+
+      .cell {
+        overflow: hidden;
+        background: #e9ecef;
+        position: relative; /* Context for absolute image */
+        cursor: grab;
+      }
+      
+      .cell.cropping {
+        /* outline: 3px solid var(--accent-color); */
+        /* outline-offset: -3px; */
+        z-index: 10;
+        cursor: move;
+        overflow: visible; /* Show controls outside if needed, but we keep controls inside usually */
+      }
+
+      /* Darken outside area using box-shadow on a pseudo-element */
+      .cell.cropping::after {
+        content: '';
+        position: absolute;
+        inset: 0; /* Matches the cell box */
+        border: 2px solid var(--accent-color); /* The boundary */
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5); /* Darken everything outside */
+        pointer-events: none; /* Let interactions pass through to image/controls */
+        z-index: 15; /* Above image, below controls */
+      }
+      
+      /* Overlay for non-active cells when cropping */
+      /* This is now redundant/conflicting because the box-shadow handles the dimming. 
+         But we might want to keep it if we want EXTRA dimming on siblings? 
+         Actually, box-shadow covers siblings. So let's remove this specific rule or make it do nothing. */
+      /* body.is-cropping .cell:not(.cropping)::after { ... } - REMOVED/OVERRIDDEN */
+
+      .cell img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        user-select: none;
+        -webkit-user-drag: none;
+        transform-origin: center center;
+        will-change: transform, width, height, top, left;
+      }
+      
+      /* In crop mode, we might switch to absolute positioning manually */
+      .cell.cropping img {
+        /* We will handle sizing/positioning via JS in crop mode */
+        object-fit: fill; /* Reset so we can stretch manually if needed, or stick to logic */
+        max-width: none;
+        max-height: none;
+        position: absolute;
+      }
+
+      /* Gutters are the visible "white space" between cells/rows */
+      .gutter {
+        background-color: #ffffff;
+        background-repeat: no-repeat;
+        background-position: center;
+        z-index: 2; /* below crop active state */
+      }
+
+      /* Between rows (top/bottom) */
+      .gutter.gutter-vertical {
+        cursor: row-resize;
+      }
+
+      /* Between cells (left/middle/right) */
+      .gutter.gutter-horizontal {
+        cursor: col-resize;
+      }
+
+      /* Subtle affordance on hover (still reads as white space) */
+      .gutter:hover {
+        background-image: linear-gradient(
+          90deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+      .gutter.gutter-vertical:hover {
+        background-image: linear-gradient(
+          0deg,
+          rgba(13, 110, 253, 0) 0%,
+          rgba(13, 110, 253, 0.35) 50%,
+          rgba(13, 110, 253, 0) 100%
+        );
+      }
+
+      .hint {
+        position: fixed;
+        left: 16px;
+        bottom: 16px;
+        max-width: min(560px, calc(100vw - 32px));
+        color: var(--hint-fg);
+        background: var(--hint-bg);
+        border: 1px solid var(--hint-border);
+        border-radius: 12px;
+        padding: 10px 12px;
+        backdrop-filter: blur(8px);
+        font-size: 0.95rem;
+        line-height: 1.35;
+        z-index: 100;
+        pointer-events: none;
+      }
+      .hint kbd {
+        background: rgba(255, 255, 255, 0.12);
+        color: rgba(255, 255, 255, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
+      /* Crop Controls */
+      .crop-controls {
+        position: absolute;
+        bottom: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(0,0,0,0.75);
+        backdrop-filter: blur(5px);
+        padding: 8px 16px;
+        border-radius: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: white;
+        font-size: 14px;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.2s;
+        z-index: 20;
+        white-space: nowrap;
+      }
+
+      .cell.cropping .crop-controls {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .zoom-slider {
+        width: 100px;
+        cursor: pointer;
+      }
+
+      /* Mobile: allow scrolling if necessary */
+      @media (max-width: 768px) {
+        body {
+          overflow: auto;
+        }
+        .app {
+          min-height: 100vh;
+          padding: 10px;
+        }
+        .spread {
+          max-height: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="app">
+      <div class="spread" id="spread" aria-label="Two-page photo album spread">
+        <!-- Left Page -->
+        <section class="page" id="page-left" aria-label="Left page">
+          <div class="page-row" id="left-row-top">
+            <div class="cell" data-img-id="1">
+              <img src="https://picsum.photos/seed/gpt52-01/1200/900" alt="Placeholder 1" />
+            </div>
+            <div class="cell" data-img-id="2">
+              <img src="https://picsum.photos/seed/gpt52-02/1200/900" alt="Placeholder 2" />
+            </div>
+            <div class="cell" data-img-id="3">
+              <img src="https://picsum.photos/seed/gpt52-03/1200/900" alt="Placeholder 3" />
+            </div>
+          </div>
+          <div class="page-row" id="left-row-bottom">
+            <div class="cell" data-img-id="4">
+              <img src="https://picsum.photos/seed/gpt52-04/1200/900" alt="Placeholder 4" />
+            </div>
+            <div class="cell" data-img-id="5">
+              <img src="https://picsum.photos/seed/gpt52-05/1200/900" alt="Placeholder 5" />
+            </div>
+            <div class="cell" data-img-id="6">
+              <img src="https://picsum.photos/seed/gpt52-06/1200/900" alt="Placeholder 6" />
+            </div>
+          </div>
+        </section>
+
+        <!-- Right Page -->
+        <section class="page" id="page-right" aria-label="Right page">
+          <div class="page-row" id="right-row-top">
+            <div class="cell" data-img-id="7">
+              <img src="https://picsum.photos/seed/gpt52-07/1200/900" alt="Placeholder 7" />
+            </div>
+            <div class="cell" data-img-id="8">
+              <img src="https://picsum.photos/seed/gpt52-08/1200/900" alt="Placeholder 8" />
+            </div>
+            <div class="cell" data-img-id="9">
+              <img src="https://picsum.photos/seed/gpt52-09/1200/900" alt="Placeholder 9" />
+            </div>
+          </div>
+          <div class="page-row" id="right-row-bottom">
+            <div class="cell" data-img-id="10">
+              <img src="https://picsum.photos/seed/gpt52-10/1200/900" alt="Placeholder 10" />
+            </div>
+            <div class="cell" data-img-id="11">
+              <img src="https://picsum.photos/seed/gpt52-11/1200/900" alt="Placeholder 11" />
+            </div>
+            <div class="cell" data-img-id="12">
+              <img src="https://picsum.photos/seed/gpt52-12/1200/900" alt="Placeholder 12" />
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="hint">
+      <strong>Double-click</strong> to crop. <strong>Click outside</strong> to save. Resizing gutters enabled.
+    </div>
+
+    <!-- Template for crop controls -->
+    <template id="crop-controls-template">
+      <div class="crop-controls" onmousedown="event.stopPropagation()">
+        <span>Zoom</span>
+        <input type="range" class="zoom-slider" min="1" max="5" step="0.01" value="1">
+      </div>
+    </template>
+
+    <!-- Split.js CDN (lightweight helper for resizable gutters) -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+    <script>
+      document.addEventListener("DOMContentLoaded", () => {
+        const GUTTER_SIZE = 7;
+
+        // --- Cropping State & Functions (Hoisted/Declared first) ---
+        // Store crop data per cell: { zoom: 1, panX: 0, panY: 0 }
+        const cropData = new Map();
+        let activeCropState = null; // { cell, img, startX, startY, ... }
+
+        function getCropData(cell) {
+            if (!cropData.has(cell)) {
+                cropData.set(cell, { zoom: 1, panX: 0, panY: 0 });
+            }
+            return cropData.get(cell);
+        }
+
+        function getNaturalImageSize(img) {
+            return { w: img.naturalWidth || 1200, h: img.naturalHeight || 900 };
+        }
+        
+        function calculateCoverDimensions(containerW, containerH, imgW, imgH) {
+            const containerRatio = containerW / containerH;
+            const imgRatio = imgW / imgH;
+
+            let w, h;
+            if (imgRatio > containerRatio) {
+                // Image is wider than container (relative to aspect), so match height
+                h = containerH;
+                w = h * imgRatio;
+            } else {
+                // Image is taller, match width
+                w = containerW;
+                h = w / imgRatio;
+            }
+            return { w, h };
+        }
+
+        function applyCropStyle(state) {
+            const { cell, img, data } = state;
+            const rect = cell.getBoundingClientRect();
+            const nat = getNaturalImageSize(img);
+            
+            const cover = calculateCoverDimensions(rect.width, rect.height, nat.w, nat.h);
+            
+            if (state === activeCropState) {
+                state.coverW = cover.w;
+                state.coverH = cover.h;
+                state.containerW = rect.width;
+                state.containerH = rect.height;
+            }
+            
+            // Clamp pan
+            const maxPanX = Math.max(0, (cover.w * data.zoom - rect.width) / 2);
+            const maxPanY = Math.max(0, (cover.h * data.zoom - rect.height) / 2);
+            
+            data.panX = Math.max(-maxPanX, Math.min(maxPanX, data.panX));
+            data.panY = Math.max(-maxPanY, Math.min(maxPanY, data.panY));
+
+            // Apply styles
+            img.style.width = `${cover.w}px`;
+            img.style.height = `${cover.h}px`;
+            img.style.objectFit = 'fill';
+            img.style.position = 'absolute';
+            img.style.left = '50%';
+            img.style.top = '50%';
+            img.style.transform = `translate(-50%, -50%) translate(${data.panX}px, ${data.panY}px) scale(${data.zoom})`;
+        }
+        
+        function updateAllCrops() {
+            document.querySelectorAll('.cell').forEach(cell => {
+                if (cropData.has(cell)) {
+                    const img = cell.querySelector('img');
+                    const data = cropData.get(cell);
+                    const state = { cell, img, data };
+                    applyCropStyle(state);
+                }
+            });
+        }
+        
+        function updateCropTransform(state) {
+            applyCropStyle(state);
+        }
+
+        const commonOptions = {
+          gutterSize: GUTTER_SIZE,
+          snapOffset: 0,
+          onDrag: () => {
+             updateAllCrops();
+          }
+        };
+
+        // --- Split.js Setup ---
+        Split(["#left-row-top", "#left-row-bottom"], {
+          ...commonOptions,
+          direction: "vertical",
+          sizes: [50, 50],
+          minSize: 90,
+          cursor: "row-resize",
+        });
+
+        Split(["#right-row-top", "#right-row-bottom"], {
+          ...commonOptions,
+          direction: "vertical",
+          sizes: [50, 50],
+          minSize: 90,
+          cursor: "row-resize",
+        });
+
+        const rowSelectors = ["#left-row-top", "#left-row-bottom", "#right-row-top", "#right-row-bottom"];
+        for (const rowSel of rowSelectors) {
+          const cells = document.querySelectorAll(`${rowSel} .cell`);
+          Split(cells, {
+            ...commonOptions,
+            direction: "horizontal",
+            sizes: [33.33, 33.34, 33.33],
+            minSize: 70,
+            cursor: "col-resize",
+          });
+        }
+
+        // --- Spread Resizing ---
+        const spread = document.getElementById("spread");
+        const updateSpreadFit = () => {
+          const margin = 36;
+          const availW = Math.max(320, window.innerWidth - margin);
+          const availH = Math.max(320, window.innerHeight - margin);
+          const PAD = 14;
+          const GAP = 10;
+          const PAGE_W = 35;
+          const PAGE_H = 29;
+
+          const heightForWidth = (w) => {
+            const innerW = Math.max(1, w - 2 * PAD - GAP);
+            const pageW = innerW / 2;
+            const pageH = pageW * (PAGE_H / PAGE_W);
+            return 2 * PAD + pageH;
+          };
+
+          const widthForHeight = (h) => {
+            const innerH = Math.max(1, h - 2 * PAD);
+            const pageW = innerH * (PAGE_W / PAGE_H);
+            const innerW = 2 * pageW;
+            return 2 * PAD + GAP + innerW;
+          };
+
+          let w = availW;
+          let h = heightForWidth(w);
+          if (h > availH) {
+            h = availH;
+            w = widthForHeight(h);
+          }
+
+          spread.style.width = `${Math.floor(w)}px`;
+          spread.style.height = `${Math.floor(h)}px`;
+          
+          // Re-evaluate crop constraints on window resize
+          updateAllCrops();
+        };
+
+        updateSpreadFit();
+        window.addEventListener("resize", updateSpreadFit, { passive: true });
+
+
+        // --- Cropping Logic ---
+        
+        // Initialize crop mode for a cell
+        function startCropping(cell) {
+            if (activeCropState && activeCropState.cell === cell) return;
+            if (activeCropState) stopCropping();
+
+            const img = cell.querySelector('img');
+            if (!img) return;
+
+            // Handle parent overflow and z-indexing to prevent clipping
+            const pageRow = cell.closest('.page-row');
+            const page = cell.closest('.page');
+            
+            if (pageRow) pageRow.style.overflow = 'visible';
+            if (page) {
+                page.style.overflow = 'visible';
+                page.style.zIndex = '100'; // Ensure it sits above the other page
+            }
+
+            // Mark global state
+            document.body.classList.add('is-cropping');
+            cell.classList.add('cropping');
+
+            // Add controls
+            const template = document.getElementById('crop-controls-template');
+            const controls = template.content.cloneNode(true);
+            cell.appendChild(controls);
+            
+            const slider = cell.querySelector('.zoom-slider');
+            const data = getCropData(cell);
+            slider.value = data.zoom;
+
+            // Setup state
+            activeCropState = {
+                cell,
+                img,
+                slider,
+                data, // reference to mutable data object
+                isDragging: false,
+                // Store elements to revert styles later
+                elements: { pageRow, page }
+            };
+
+            // Switch image to absolute positioning for manual control
+            applyCropStyle(activeCropState);
+
+            // Listeners
+            slider.addEventListener('input', onZoomChange);
+            img.addEventListener('mousedown', onDragStart);
+            window.addEventListener('mousemove', onDragMove);
+            window.addEventListener('mouseup', onDragEnd);
+        }
+
+        function stopCropping() {
+            if (!activeCropState) return;
+            const { cell, img, slider, elements } = activeCropState;
+
+            // Revert parent overflow/z-index
+            if (elements.pageRow) elements.pageRow.style.overflow = '';
+            if (elements.page) {
+                elements.page.style.overflow = '';
+                elements.page.style.zIndex = '';
+            }
+
+            // Remove controls
+            const controls = cell.querySelector('.crop-controls');
+            if (controls) controls.remove();
+
+            // Cleanup listeners
+            slider.removeEventListener('input', onZoomChange);
+            img.removeEventListener('mousedown', onDragStart);
+            window.removeEventListener('mousemove', onDragMove);
+            window.removeEventListener('mouseup', onDragEnd);
+
+            cell.classList.remove('cropping');
+            document.body.classList.remove('is-cropping');
+            
+            // We keep the styles on the img to persist the visual crop
+            
+            activeCropState = null;
+        }
+
+        // Event Handlers
+
+        function onZoomChange(e) {
+            if (!activeCropState) return;
+            const newZoom = parseFloat(e.target.value);
+            activeCropState.data.zoom = newZoom;
+            updateCropTransform(activeCropState);
+        }
+
+        function onDragStart(e) {
+            if (!activeCropState) return;
+            e.preventDefault();
+            activeCropState.isDragging = true;
+            activeCropState.startX = e.clientX;
+            activeCropState.startY = e.clientY;
+            activeCropState.initialPanX = activeCropState.data.panX;
+            activeCropState.initialPanY = activeCropState.data.panY;
+            activeCropState.cell.style.cursor = 'grabbing';
+        }
+
+        function onDragMove(e) {
+            if (!activeCropState || !activeCropState.isDragging) return;
+            e.preventDefault();
+            
+            const dx = e.clientX - activeCropState.startX;
+            const dy = e.clientY - activeCropState.startY;
+            
+            // Visual shift is delta.
+            // With transform: ... scale(zoom), translation is scaled.
+            // So we divide delta by zoom to get the needed pan change.
+            activeCropState.data.panX = activeCropState.initialPanX + (dx / activeCropState.data.zoom);
+            activeCropState.data.panY = activeCropState.initialPanY + (dy / activeCropState.data.zoom);
+            
+            updateCropTransform(activeCropState);
+        }
+
+        function onDragEnd(e) {
+            if (!activeCropState || !activeCropState.isDragging) return;
+            activeCropState.isDragging = false;
+            activeCropState.cell.style.cursor = 'move';
+        }
+
+        // Global listeners
+        
+        // Double click to enter
+        document.addEventListener('dblclick', (e) => {
+            const cell = e.target.closest('.cell');
+            if (cell) {
+                startCropping(cell);
+            }
+        });
+
+        // Click outside to exit
+        document.addEventListener('mousedown', (e) => {
+            if (!activeCropState) return;
+            // If click is inside the active cell or its controls, ignore
+            if (activeCropState.cell.contains(e.target)) return;
+            
+            // Clicked outside
+            stopCropping();
+        });
+      });
+    </script>
+  </body>
+</html>
+

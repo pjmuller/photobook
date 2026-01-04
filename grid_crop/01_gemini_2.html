@@ -1,0 +1,341 @@
+<!-- Very good as well-->
+<!-- leaves gaps -->
+<!-- maybe doesn't set right defaults for all other cells when you resize the gutters? -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resizable Photo Album</title>
+
+    <!-- Bootstrap 5 CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Split.js CDN -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+
+    <style>
+        /* --- Basic Setup & Album Structure --- */
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #343a40; /* Dark background for contrast */
+            overflow-x: hidden; /* Prevent horizontal scrollbar from gutters */
+        }
+
+        .album-container {
+            display: flex;
+            gap: 20px; /* Space between pages and book spine effect */
+            width: 100%;
+        }
+
+        .page {
+            flex: 1;
+            min-width: 0; /* Important for flexbox shrinking */
+            aspect-ratio: 35 / 29; /* Core requirement: 35:29 page aspect ratio */
+            background-color: #fff;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column; /* To stack rows vertically */
+        }
+
+        /* --- Split.js Rows & Cells --- */
+        .split-row {
+            display: flex; /* To lay out cells horizontally */
+            overflow: hidden; /* Hide anything that spills out */
+        }
+
+        .split-cell {
+            position: relative; /* Anchor for image and controls */
+            overflow: hidden; /* This is the cropping frame */
+            background-color: #e9ecef; /* Placeholder bg */
+        }
+
+        /* --- Gutter Styling --- */
+        .gutter {
+            background-color: #6c757d;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .gutter.gutter-vertical {
+            cursor: ns-resize; /* North-South for horizontal gutters */
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="30"><path d="M0,12 v3 h10 v-3 z M0,18 v3 h10 v-3 z" fill="white" /></svg>');
+        }
+
+        .gutter.gutter-horizontal {
+            cursor: ew-resize; /* East-West for vertical gutters */
+             background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="30" height="10"><path d="M12,0 h3 v10 h-3 z M18,0 h3 v10 h-3 z" fill="white" /></svg>');
+        }
+
+        /* --- Image Cropping & Controls --- */
+        .crop-container img {
+            position: absolute;
+            cursor: move; /* Grab cursor for panning */
+            user-select: none; /* Prevents text selection while dragging */
+            -webkit-user-drag: none; /* Prevents ghost image on drag */
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 5px;
+            padding: 5px 10px;
+            display: flex;
+            align-items: center;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out;
+            pointer-events: none; /* Don't intercept mouse events unless visible */
+        }
+
+        .split-cell:hover .controls {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .controls label {
+            color: white;
+            font-size: 0.8em;
+            margin-right: 10px;
+        }
+
+        .controls input[type="range"] {
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="album-container">
+        <!-- LEFT PAGE -->
+        <div id="page-left" class="page">
+            <div id="p1-r1" class="split-row">
+                <div id="p1-r1-c1" class="split-cell"></div>
+                <div id="p1-r1-c2" class="split-cell"></div>
+                <div id="p1-r1-c3" class="split-cell"></div>
+            </div>
+            <div id="p1-r2" class="split-row">
+                <div id="p1-r2-c1" class="split-cell"></div>
+                <div id="p1-r2-c2" class="split-cell"></div>
+                <div id="p1-r2-c3" class="split-cell"></div>
+            </div>
+        </div>
+
+        <!-- RIGHT PAGE -->
+        <div id="page-right" class="page">
+            <div id="p2-r1" class="split-row">
+                <div id="p2-r1-c1" class="split-cell"></div>
+                <div id="p2-r1-c2" class="split-cell"></div>
+                <div id="p2-r1-c3" class="split-cell"></div>
+            </div>
+            <div id="p2-r2" class="split-row">
+                <div id="p2-r2-c1" class="split-cell"></div>
+                <div id="p2-r2-c2" class="split-cell"></div>
+                <div id="p2-r2-c3" class="split-cell"></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+
+    // --- 1. Initialize Splitters for Layout Resizing ---
+
+    // Horizontal gutters (Vertical Split) for each page
+    Split(['#p1-r1', '#p1-r2'], {
+        direction: 'vertical',
+        sizes: [50, 50],
+        gutterSize: 10,
+        minSize: 100,
+    });
+    Split(['#p2-r1', '#p2-r2'], {
+        direction: 'vertical',
+        sizes: [50, 50],
+        gutterSize: 10,
+        minSize: 100,
+    });
+
+    // Vertical gutters (Horizontal Split) for each row
+    const rowIds = ['#p1-r1', '#p1-r2', '#p2-r1', '#p2-r2'];
+    rowIds.forEach(id => {
+        const row = document.querySelector(id);
+        const cells = Array.from(row.children);
+        Split(cells, {
+            direction: 'horizontal',
+            sizes: [33.3, 33.3, 33.3],
+            gutterSize: 10,
+            minSize: 80,
+        });
+    });
+
+
+    // --- 2. Initialize Image Cropping Functionality for Each Cell ---
+
+    const cells = document.querySelectorAll('.split-cell');
+    cells.forEach((cell, index) => {
+        // Create unique image and controls for each cell
+        const imageUrl = `https://picsum.photos/seed/${index + 1}/800/600`;
+        cell.innerHTML = `
+            <div class="crop-container">
+                <img src="${imageUrl}" draggable="false">
+            </div>
+            <div class="controls">
+                <label for="zoom-${index}">Zoom:</label>
+                <input type="range" id="zoom-${index}" class="zoom-slider" min="1" max="3" step="0.01">
+            </div>
+        `;
+        initCroppableCell(cell);
+    });
+
+    /**
+     * Sets up all event listeners and initial state for a single croppable cell.
+     * @param {HTMLElement} cell The .split-cell element to initialize.
+     */
+    function initCroppableCell(cell) {
+        const img = cell.querySelector('img');
+        const slider = cell.querySelector('.zoom-slider');
+
+        // State object to manage dragging and position
+        const state = {
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            imgStartLeft: 0,
+            imgStartTop: 0,
+            currentScale: 1,
+            minScale: 1
+        };
+
+        // We must wait for the image to load to get its natural dimensions
+        img.onload = () => {
+            const cellRect = cell.getBoundingClientRect();
+            
+            // Calculate the minimum scale to cover the cell without whitespace
+            const scaleX = cellRect.width / img.naturalWidth;
+            const scaleY = cellRect.height / img.naturalHeight;
+            state.minScale = Math.max(scaleX, scaleY);
+            state.currentScale = state.minScale;
+
+            // Configure the zoom slider
+            slider.min = state.minScale;
+            slider.max = state.minScale * 3; // Zoom up to 3x the minimum size
+            slider.value = state.minScale;
+
+            // Center the image initially
+            const initialWidth = img.naturalWidth * state.minScale;
+            const initialHeight = img.naturalHeight * state.minScale;
+            const initialLeft = (cellRect.width - initialWidth) / 2;
+            const initialTop = (cellRect.height - initialHeight) / 2;
+            
+            updateImageTransform(img, cell, state.currentScale, initialLeft, initialTop);
+        };
+
+        // Event listener for the zoom slider
+        slider.addEventListener('input', (e) => {
+            state.currentScale = parseFloat(e.target.value);
+            // Get current position before applying new scale
+            const currentLeft = parseFloat(img.style.left || 0);
+            const currentTop = parseFloat(img.style.top || 0);
+            updateImageTransform(img, cell, state.currentScale, currentLeft, currentTop);
+        });
+
+        // Event listeners for panning the image
+        img.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            state.isDragging = true;
+            state.startX = e.clientX;
+            state.startY = e.clientY;
+            state.imgStartLeft = parseFloat(img.style.left || 0);
+            state.imgStartTop = parseFloat(img.style.top || 0);
+            img.style.cursor = 'grabbing';
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!state.isDragging) return;
+            const dx = e.clientX - state.startX;
+            const dy = e.clientY - state.startY;
+            updateImageTransform(img, cell, state.currentScale, state.imgStartLeft + dx, state.imgStartTop + dy);
+        });
+
+        window.addEventListener('mouseup', () => {
+            if (state.isDragging) {
+                state.isDragging = false;
+                img.style.cursor = 'move';
+            }
+        });
+
+        // If the image fails to load, you can add a placeholder or error message
+        img.onerror = () => {
+            cell.innerHTML = '<div class="text-center p-3 text-muted">Image failed to load</div>';
+        }
+    }
+
+    /**
+     * Applies transformations to the image and clamps its position
+     * so it never shows whitespace within the cell.
+     * @param {HTMLImageElement} img The image to transform.
+     * @param {HTMLElement} cell The container cell.
+     * @param {number} scale The target scale.
+     * @param {number} newLeft The desired left position.
+     * @param {number} newTop The desired top position.
+     */
+    function updateImageTransform(img, cell, scale, newLeft, newTop) {
+        const cellRect = cell.getBoundingClientRect();
+        
+        // Apply scale by changing width/height
+        const scaledWidth = img.naturalWidth * scale;
+        const scaledHeight = img.naturalHeight * scale;
+        img.style.width = `${scaledWidth}px`;
+        img.style.height = `${scaledHeight}px`;
+
+        // Calculate the boundaries for panning. The image edge cannot come inside the cell.
+        const minLeft = cellRect.width - scaledWidth;
+        const minTop = cellRect.height - scaledHeight;
+        const maxLeft = 0;
+        const maxTop = 0;
+        
+        // Clamp the position within the calculated boundaries
+        const clampedLeft = Math.max(minLeft, Math.min(newLeft, maxLeft));
+        const clampedTop = Math.max(minTop, Math.min(newTop, maxTop));
+
+        img.style.left = `${clampedLeft}px`;
+        img.style.top = `${clampedTop}px`;
+    }
+
+    // A resize observer to re-calculate image positions if the window or splits change size
+    const resizeObserver = new ResizeObserver(entries => {
+        for (let entry of entries) {
+            const cell = entry.target;
+            const img = cell.querySelector('img');
+            if(img && img.complete) { // Only run if image is loaded
+                 const slider = cell.querySelector('.zoom-slider');
+                 const currentScale = parseFloat(slider.value);
+                 
+                 // Recalculate minScale
+                 const cellRect = cell.getBoundingClientRect();
+                 const scaleX = cellRect.width / img.naturalWidth;
+                 const scaleY = cellRect.height / img.naturalHeight;
+                 const newMinScale = Math.max(scaleX, scaleY);
+                 
+                 slider.min = newMinScale;
+                 // Prevent current scale from being less than the new minimum
+                 const adjustedScale = Math.max(currentScale, newMinScale);
+                 if (adjustedScale !== currentScale) {
+                     slider.value = adjustedScale;
+                 }
+
+                 updateImageTransform(img, cell, adjustedScale, parseFloat(img.style.left), parseFloat(img.style.top));
+            }
+        }
+    });
+
+    cells.forEach(cell => resizeObserver.observe(cell));
+
+});
+</script>
+
+</body>
+</html>

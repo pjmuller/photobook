@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Album - v2: Cropper.js Library</title>
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Split.js -->
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
+    <!-- Cropper.js -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+    <style>
+        body { background-color: #333; color: #fff; overflow-x: hidden; }
+        .album-container { display: flex; width: 100%; padding: 20px; box-sizing: border-box; }
+        .page {
+            aspect-ratio: 35 / 29;
+            width: 50%;
+            display: flex;
+            flex-direction: column;
+            background-color: #1a1a1a;
+            border: 2px solid #555;
+        }
+        .page-row { display: flex; }
+        .cell {
+            position: relative;
+            overflow: hidden;
+            background-color: #000;
+            border: 1px solid #444;
+        }
+        /* Cropper.js overrides the img, so we target its container */
+        .cell .cropper-container {
+            background: none; /* remove default cropper bg */
+        }
+        .cell .cropper-view-box, .cell .cropper-drag-box {
+            border-radius: 0; /* remove default cropper radius */
+        }
+        .cropper-face {
+            cursor: grab;
+        }
+        .cropper-face:active {
+            cursor: grabbing;
+        }
+        .controls {
+            position: absolute;
+            bottom: 5px;
+            left: 5px;
+            right: 5px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            background: rgba(0,0,0,0.5);
+            padding: 5px;
+            border-radius: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .cell:hover .controls { opacity: 1; }
+        .controls input[type="range"] { width: 100%; }
+        /* Split.js Gutter Styling */
+        .gutter { background-color: #555; }
+        .gutter.gutter-horizontal { cursor: ns-resize; height: 10px; }
+        .gutter.gutter-vertical { cursor: ew-resize; width: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid text-center p-3">
+        <h1>Photo Album - Version 2: The Pragmatic Library Approach</h1>
+        <p class="text-muted">Uses the powerful <a href="https://github.com/fengyuanchen/cropperjs" target="_blank">Cropper.js</a> library for robust image handling.</p>
+    </div>
+    <div class="album-container">
+        <!-- Structure is identical to v1, but the JS will populate it differently -->
+        <div class="page" id="page-left">
+            <div class="page-row" id="page-left-row1">
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+            </div>
+            <div class="page-row" id="page-left-row2">
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+            </div>
+        </div>
+        <div class="page" id="page-right">
+            <div class="page-row" id="page-right-row1">
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+            </div>
+            <div class="page-row" id="page-right-row2">
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+                <div class="cell"><img/><div class="controls"><input type="range" class="zoom-slider" min="0" max="1" step="0.01" value="0"></div></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Gutter Initialization using Split.js ---
+    // Note: We use querySelectors here for a slightly more robust setup
+    Split(['#page-left > .page-row', '#page-right > .page-row'], {
+        direction: 'vertical',
+        sizes: [50, 50],
+        minSize: 100,
+        gutterSize: 10,
+    });
+
+    document.querySelectorAll('.page-row').forEach(row => {
+        Split(Array.from(row.children), {
+            sizes: [33.3, 33.3, 33.3],
+            minSize: 50,
+            gutterSize: 10,
+        });
+    });
+
+    // --- Cropper.js Initialization ---
+    document.querySelectorAll('.cell').forEach((cell, index) => {
+        const image = cell.querySelector('img');
+        image.src = `https://picsum.photos/800/600?random=${index + 1}`;
+        
+        let cropper;
+        
+        // Cropper.js needs the image to be loaded to get its dimensions
+        image.onload = () => {
+            cropper = new Cropper(image, {
+                // viewMode: 3 makes sure the crop box never exceeds the container
+                // This is perfect for our "no whitespace" requirement.
+                viewMode: 3, 
+                dragMode: 'move', // Allows panning the image
+                aspectRatio: NaN, // Free aspect ratio
+                autoCrop: true,
+                autoCropArea: 1, // Start with image fully filling the area
+                // Disable all visual guides for a cleaner look
+                guides: false,
+                center: false,
+                background: false,
+                cropBoxMovable: false,
+                cropBoxResizable: false,
+                toggleDragModeOnDblclick: false,
+            });
+        };
+
+        const zoomSlider = cell.querySelector('.zoom-slider');
+        zoomSlider.addEventListener('input', (e) => {
+            if (cropper) {
+                // Cropper's zoom is a ratio, so we can pass the slider value directly.
+                // It represents the cropped area size relative to the canvas size.
+                // A smaller value means more zoom.
+                // We'll map our slider [0, 1] to a zoomTo ratio.
+                const minZoomRatio = cropper.getData().width / cropper.getImageData().naturalWidth;
+                const maxZoomRatio = 2; // Arbitrary max zoom
+                // Map slider value [0,1] to [minZoomRatio, maxZoomRatio]
+                const zoomValue = parseFloat(e.target.value); // Our slider is 0 to 1
+                const zoomRatio = minZoomRatio + (zoomValue * (maxZoomRatio - minZoomRatio));
+                cropper.zoomTo(zoomRatio);
+            }
+        });
+
+        // HACK: Re-render cropper when gutter is dragged
+        new ResizeObserver(() => {
+            if (cropper) {
+                cropper.destroy();
+                cropper = new Cropper(image, cropper.options);
+            }
+        }).observe(cell);
+    });
+});
+</script>
+</body>
+</html>
