@@ -1,0 +1,40 @@
+---
+description: pdf cover pdf
+alwaysApply: false
+---
+
+# PDF Cover Generator
+
+## Overview
+`pdf_generator/generate_cover.py` creates a single-page cover PDF with back panel, spine (with year text), and front panel.
+
+## Usage
+```bash
+python generate_cover.py <image_folder> <year>
+```
+
+## Key Specifications
+- Height: 335mm (including 19mm bleed top/bottom)
+- Base width: 758mm (for 6mm spine), increases with spine width
+- Bleed: 19mm on all sides
+- Layout: `| left bleed 19mm | back panel | Hinge 10mm | spine (6mm or more) | Hinge 10mm | front panel | right bleed 19mm |`
+
+### Image Widths
+The spine belongs to the front image. For base width W and spine S:
+- Back image = `(W - S) / 2` → (758 - 6) / 2 = 376mm
+- Front image = `(W + S) / 2` → (758 + 6) / 2 = 382mm
+
+## Spine Width
+Determined by paper page count: `(album_pages - 2) / 2`
+- 24-34 pages → 6mm
+- 36-46 pages → 7mm
+- ... up to 200 pages → 19mm
+
+## Image Placement
+- Back cover (left): Image from last album page
+- Front cover + spine (right): Image from first album page
+- Year text: White, ~10mm height (28pt), centered vertically on spine
+
+## Constraints
+- First and last album pages must have layout '1' (single full-page image)
+- Script exits with error if cover pages have multiple cells
