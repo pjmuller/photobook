@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 
 const props = defineProps<{
   currentSpread: number
@@ -16,6 +16,7 @@ const emit = defineEmits<{
 }>()
 
 const moveDropdownOpen = ref(false)
+const dropdownRef = ref<HTMLElement | null>(null)
 
 const canMoveLeft = computed(() => props.currentSpread > 1)
 const canMoveRight = computed(() => props.currentSpread < props.totalSpreads)
@@ -37,6 +38,20 @@ function handleMoveRight() {
   emit('moveSpread', 'right')
   closeMoveDropdown()
 }
+
+function handleClickOutside(event: MouseEvent) {
+  if (dropdownRef.value && !dropdownRef.value.contains(event.target as Node)) {
+    closeMoveDropdown()
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside)
+})
 </script>
 
 <template>
@@ -78,7 +93,7 @@ function handleMoveRight() {
       >
         <i class="bi bi-trash"></i>
       </button>
-      <div class="dropdown" :class="{ open: moveDropdownOpen }">
+      <div ref="dropdownRef" class="dropdown" :class="{ open: moveDropdownOpen }">
         <button
           class="btn btn-icon"
           :disabled="totalSpreads <= 1"

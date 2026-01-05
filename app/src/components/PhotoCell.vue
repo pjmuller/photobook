@@ -283,10 +283,28 @@ function handleDrop(e: DragEvent) {
 }
 
 function handleDragStart(e: DragEvent) {
-  if (!hasImage.value || props.isCropMode) {
+  if (!hasImage.value || props.isCropMode || !props.imageInfo) {
     e.preventDefault()
     return
   }
+  
+  // Create custom drag image (clean thumbnail)
+  const dragPreview = document.createElement('img')
+  dragPreview.src = props.imageInfo.objectUrl!
+  const aspectRatio = props.imageInfo.naturalWidth / props.imageInfo.naturalHeight
+  const previewHeight = 80
+  dragPreview.style.cssText = `
+    width: ${previewHeight * aspectRatio}px;
+    height: ${previewHeight}px;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    position: fixed;
+    top: -1000px;
+    left: -1000px;
+  `
+  document.body.appendChild(dragPreview)
+  e.dataTransfer!.setDragImage(dragPreview, dragPreview.offsetWidth / 2, dragPreview.offsetHeight / 2)
+  setTimeout(() => document.body.removeChild(dragPreview), 0)
   
   const data = {
     type: 'cell',
