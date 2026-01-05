@@ -401,6 +401,79 @@ function handleChangeLayout(pageId: string, newLayout: LayoutType) {
 // Resize handlers
 let resizeStartValues: { heights?: number[]; widths?: number[]; columnWidths?: number[] } = {}
 
+// Snap threshold in pixels
+const SNAP_THRESHOLD = 12
+
+/**
+ * Get all horizontal gutter positions for row-based layouts (cumulative cell widths)
+ * Returns positions for all rows except the one being dragged
+ */
+function getHorizontalSnapTargets(page: Page, excludeRowIndex: number): number[] {
+  if (!page.rows) return []
+  
+  const targets: number[] = []
+  
+  for (let rowIdx = 0; rowIdx < page.rows.length; rowIdx++) {
+    if (rowIdx === excludeRowIndex) continue
+    
+    const row = page.rows[rowIdx]
+    let cumulative = 0
+    
+    // Add gutter positions (after each cell except the last)
+    for (let cellIdx = 0; cellIdx < row.cells.length - 1; cellIdx++) {
+      cumulative += row.cells[cellIdx].width!
+      targets.push(cumulative)
+    }
+  }
+  
+  return targets
+}
+
+/**
+ * Get all vertical gutter positions for column-based layouts (cumulative cell heights)
+ * Returns positions for all columns except the one being dragged
+ */
+function getVerticalSnapTargets(page: Page, excludeColumnIndex: number): number[] {
+  if (!page.columns) return []
+  
+  const targets: number[] = []
+  
+  for (let colIdx = 0; colIdx < page.columns.length; colIdx++) {
+    if (colIdx === excludeColumnIndex) continue
+    
+    const column = page.columns[colIdx]
+    let cumulative = 0
+    
+    // Add gutter positions (after each cell except the last)
+    for (let cellIdx = 0; cellIdx < column.cells.length - 1; cellIdx++) {
+      cumulative += column.cells[cellIdx].height!
+      targets.push(cumulative)
+    }
+  }
+  
+  return targets
+}
+
+/**
+ * Snap a value to the nearest target if within threshold
+ */
+function snapToNearest(value: number, targets: number[], threshold: number): number {
+  if (targets.length === 0) return value
+  
+  let nearestTarget = targets[0]
+  let nearestDistance = Math.abs(value - targets[0])
+  
+  for (const target of targets) {
+    const distance = Math.abs(value - target)
+    if (distance < nearestDistance) {
+      nearestDistance = distance
+      nearestTarget = target
+    }
+  }
+  
+  return nearestDistance <= threshold ? nearestTarget : value
+}
+
 function handleResizeRowStart(pageId: string, _rowIndex: number) {
   const page = findPage(pageId)
   if (!page || !page.rows) return
@@ -512,11 +585,25 @@ function handleResizeCell(pageId: string, containerIndex: number, cellIndex: num
     const startWidth1 = resizeStartValues.widths[cellIndex]
     const startWidth2 = resizeStartValues.widths[cellIndex + 1]
     
-    let newWidth1 = startWidth1 + delta
-    let newWidth2 = startWidth2 - delta
+    // Calculate cumulative position up to this gutter (sum of widths before + current cell)
+    let cumulativeBeforeGutter = 0
+    for (let i = 0; i < cellIndex; i++) {
+      cumulativeBeforeGutter += resizeStartValues.widths[i]
+    }
     
+    // The intended new gutter position
+    let intendedGutterPos = cumulativeBeforeGutter + startWidth1 + delta
+    
+    // Get snap targets from other rows and apply snapping
+    const snapTargets = getHorizontalSnapTargets(page, containerIndex)
+    const snappedGutterPos = snapToNearest(intendedGutterPos, snapTargets, SNAP_THRESHOLD)
+    
+    // Calculate new width from snapped position
+    let newWidth1 = snappedGutterPos - cumulativeBeforeGutter
+    let newWidth2 = startWidth1 + startWidth2 - newWidth1
+    
+    // Enforce minimums (this may break the snap, but safety first)
     const maxWidth1 = startWidth1 + startWidth2 - CONFIG.CELL_MIN_WIDTH
-    
     newWidth1 = clamp(newWidth1, CONFIG.CELL_MIN_WIDTH, maxWidth1)
     newWidth2 = startWidth1 + startWidth2 - newWidth1
     
@@ -537,11 +624,25 @@ function handleResizeCell(pageId: string, containerIndex: number, cellIndex: num
     const startHeight1 = resizeStartValues.heights[cellIndex]
     const startHeight2 = resizeStartValues.heights[cellIndex + 1]
     
-    let newHeight1 = startHeight1 + delta
-    let newHeight2 = startHeight2 - delta
+    // Calculate cumulative position up to this gutter
+    let cumulativeBeforeGutter = 0
+    for (let i = 0; i < cellIndex; i++) {
+      cumulativeBeforeGutter += resizeStartValues.heights[i]
+    }
     
+    // The intended new gutter position
+    let intendedGutterPos = cumulativeBeforeGutter + startHeight1 + delta
+    
+    // Get snap targets from other columns and apply snapping
+    const snapTargets = getVerticalSnapTargets(page, containerIndex)
+    const snappedGutterPos = snapToNearest(intendedGutterPos, snapTargets, SNAP_THRESHOLD)
+    
+    // Calculate new height from snapped position
+    let newHeight1 = snappedGutterPos - cumulativeBeforeGutter
+    let newHeight2 = startHeight1 + startHeight2 - newHeight1
+    
+    // Enforce minimums
     const maxHeight1 = startHeight1 + startHeight2 - CONFIG.ROW_MIN_HEIGHT
-    
     newHeight1 = clamp(newHeight1, CONFIG.ROW_MIN_HEIGHT, maxHeight1)
     newHeight2 = startHeight1 + startHeight2 - newHeight1
     
