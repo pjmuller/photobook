@@ -2,7 +2,7 @@
 """
 Photobook PDF Generator
 
-Generates print-ready CMYK PDFs from album.json and source images.
+Generates print-ready sRGB PDFs from album.json and source images.
 Uses the same cropping and layout logic as the Vue.js frontend.
 """
 
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import TypedDict, NotRequired
 
-from PIL import Image, ImageCms
+from PIL import Image
 from reportlab.lib.units import mm
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
@@ -183,28 +183,22 @@ def load_image(image_path: Path) -> Image.Image:
     return img
 
 
-def convert_to_cmyk(img: Image.Image) -> Image.Image:
-    """Convert an image to CMYK color space for print."""
-    if img.mode == "CMYK":
+def convert_to_srgb(img: Image.Image) -> Image.Image:
+    """Convert an image to sRGB color space."""
+    if img.mode == "RGB":
         return img
 
-    # Convert to RGB first if necessary (e.g., from RGBA, P, L)
-    if img.mode != "RGB":
-        # Handle transparency by compositing on white background
-        if img.mode in ("RGBA", "LA", "PA"):
-            background = Image.new("RGB", img.size, (255, 255, 255))
-            if img.mode == "RGBA":
-                background.paste(img, mask=img.split()[3])
-            else:
-                background.paste(img)
-            img = background
+    # Handle transparency by compositing on white background
+    if img.mode in ("RGBA", "LA", "PA"):
+        background = Image.new("RGB", img.size, (255, 255, 255))
+        if img.mode == "RGBA":
+            background.paste(img, mask=img.split()[3])
         else:
-            img = img.convert("RGB")
+            background.paste(img)
+        return background
 
-    # Convert RGB to CMYK
-    # Note: For professional printing, you'd want to use ICC profiles
-    # This is a simple conversion; for best results, embed proper ICC profiles
-    return img.convert("CMYK")
+    # Convert any other mode to RGB
+    return img.convert("RGB")
 
 
 def crop_and_resize_image(
@@ -316,11 +310,11 @@ def render_cell(
         target_dpi=300,  # Internal processing at 300 DPI
     )
 
-    # Convert to CMYK
-    cmyk_img = convert_to_cmyk(processed_img)
+    # Convert to sRGB
+    srgb_img = convert_to_srgb(processed_img)
 
     # Draw image on PDF
-    img_reader = ImageReader(cmyk_img)
+    img_reader = ImageReader(srgb_img)
     c.drawImage(
         img_reader,
         pdf_x,
@@ -333,7 +327,7 @@ def render_cell(
     # Close images to free memory
     img.close()
     processed_img.close()
-    cmyk_img.close()
+    srgb_img.close()
 
 
 def generate_pdf(album: Album, image_folder: Path, output_path: Path) -> None:

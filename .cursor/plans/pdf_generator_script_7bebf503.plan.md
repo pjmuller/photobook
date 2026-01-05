@@ -35,11 +35,14 @@ flowchart LR
     F --> G[output.pdf]
 ```
 
+
+
 ## Key Calculations
 
 ### Dimension Mapping (UI pixels to mm)
 
 The UI uses 730×598px for a page. The print page is 356×296mm with 10mm margins:
+
 - **Printable area**: 336×276mm (356-20 × 296-20)
 - **Scale factor**: `336mm / 730px = 0.4603mm/px`
 - **Gutter in mm**: `10px × 0.4603 = 4.6mm`
@@ -47,13 +50,12 @@ The UI uses 730×598px for a page. The print page is 356×296mm with 10mm margin
 ### DPI Calculation
 
 For a cell of width W (in UI px), the print width is `W × 0.4603mm`.
+
 The crop_width from album.json tells us how many source pixels we're using.
-DPI = `(source_pixels / print_mm) × 25.4`
 
-At minimum, with crop_width=1067px for a 360px cell (166mm print):
-`(1067 / 166) × 25.4 ≈ 163 DPI` - borderline acceptable.
+DPI = `(source_pixels / print_mm) × 25.4`At minimum, with crop_width=1067px for a 360px cell (166mm print):
 
-Larger cells or zoomed images will have higher DPI. We'll log warnings for images below 200 DPI.
+`(1067 / 166) × 25.4 ≈ 163 DPI` - borderline acceptable.Larger cells or zoomed images will have higher DPI. We'll log warnings for images below 200 DPI.
 
 ### Cropping Logic
 
@@ -87,14 +89,18 @@ def calculate_crop(img_w, img_h, cell_w, cell_h, focal_x, focal_y, zoom):
     return crop_x, crop_y, final_crop_w, final_crop_h
 ```
 
+
+
 ## Project Structure
 
-```
+```javascript
 pdf_generator/
 ├── pyproject.toml          # uv/pip dependencies
 ├── generate_pdf.py         # Main CLI script
 └── README.md               # Usage instructions
 ```
+
+
 
 ## Dependencies
 
@@ -105,21 +111,26 @@ pdf_generator/
 ## Implementation Steps
 
 ### 1. Setup Python project with uv
+
 Create `pyproject.toml` with dependencies: Pillow, ReportLab
 
 ### 2. Parse album.json and load images
+
 Read JSON, load source images with Pillow, extract EXIF orientation
 
 ### 3. Port cropping algorithm
+
 Implement `calculate_crop()` exactly matching the TypeScript version
 
 ### 4. Render pages to PDF
+
 - Create 356×296mm pages with ReportLab
 - Draw 10mm margin offset
 - For each row/cell: crop image, resize with LANCZOS, place at calculated position
 - Convert to CMYK before embedding
 
 ### 5. CLI interface
+
 ```bash
 cd pdf_generator
 uv venv && source .venv/bin/activate
@@ -128,13 +139,20 @@ python generate_pdf.py /path/to/image/folder
 # Outputs: /path/to/image/folder/photobook.pdf
 ```
 
+
+
 ## Output Specifications
 
 | Property | Value |
+
 |----------|-------|
+
 | Page size | 356 × 296 mm |
+
 | Margins | 10mm all sides |
+
 | Gutter | ~4.6mm (scaled from 10px) |
+
 | Color space | CMYK |
+
 | Image resampling | Lanczos (high quality) |
-| DPI warning threshold | 200 |

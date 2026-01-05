@@ -1,6 +1,6 @@
 # Photobook PDF Generator
 
-Generate print-ready CMYK PDFs from your photobook album.json.
+Generate print-ready sRGB PDFs from your photobook album.json.
 
 ## Requirements
 
@@ -14,17 +14,8 @@ cd pdf_generator
 
 # Create virtual environment and install dependencies
 uv venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-uv pip install Pillow reportlab
-```
-
-Or with pip:
-
-```bash
-cd pdf_generator
-python -m venv .venv
 source .venv/bin/activate
-pip install Pillow reportlab
+uv pip install Pillow reportlab
 ```
 
 ## Usage
@@ -46,7 +37,7 @@ Output:
 |----------|-------|
 | Page size | 356 × 296 mm |
 | Margins | 10mm all sides |
-| Color space | CMYK |
+| Color space | sRGB |
 | Image resampling | Lanczos (high quality) |
 
 ## DPI Warnings
@@ -67,6 +58,6 @@ To fix low DPI warnings:
    - Calculates "cover" crop maintaining cell aspect ratio
    - Centers crop on focal point, clamped to image bounds
 4. Crops and resizes images using high-quality LANCZOS resampling
-5. Converts images to CMYK color space
+5. Converts images to sRGB color space
 6. Renders pages with precise mm positioning using ReportLab
 

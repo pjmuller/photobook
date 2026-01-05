@@ -1,7 +1,7 @@
 [project]
 name = "photobook-pdf-generator"
 version = "1.0.0"
-description = "Generate print-ready CMYK PDFs from photobook album.json"
+description = "Generate print-ready sRGB PDFs from photobook album.json"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

@@ -6,7 +6,7 @@ alwaysApply: false
 # PDF Generator
 
 ## Purpose
-Python CLI script that reads `album.json` and source images, applies identical cropping/layout logic to the Vue app, and outputs print-ready CMYK PDFs.
+Python CLI script that reads `album.json` and source images, applies identical cropping/layout logic to the Vue app, and outputs print-ready sRGB PDFs.
 
 ## Location
 ```
@@ -40,6 +40,6 @@ python generate_pdf.py /path/to/folder  # folder must contain album.json + image
 ```
 
 ## Output Specs
-- **Color space**: CMYK
+- **Color space**: sRGB
 - **Resampling**: Lanczos (high quality)
 - **DPI warning**: Below 200 DPI logged per image
