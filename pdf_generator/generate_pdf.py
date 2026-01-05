@@ -331,12 +331,23 @@ def render_cell(
 
 
 def generate_pdf(album: Album, image_folder: Path, output_path: Path) -> None:
-    """Generate a print-ready PDF from the album data."""
+    """Generate a print-ready PDF from the album data.
+    
+    Note: First and last pages are skipped as they are used for the cover
+    (rendered separately by generate_cover.py).
+    """
+    # Skip first and last pages (used for cover)
+    interior_pages = album["pages"][1:-1] if len(album["pages"]) > 2 else []
+    
+    if not interior_pages:
+        print("Error: Album has no interior pages (only cover pages)")
+        return
 
     print(f"Generating PDF: {output_path}")
     print(f"Page size: {PRINT_PAGE_WIDTH}x{PRINT_PAGE_HEIGHT}mm")
     print(f"Margins: {PRINT_MARGIN}mm")
     print(f"Scale factor: {SCALE_FACTOR:.4f} mm/px")
+    print(f"Skipping first and last pages (used for cover)")
     print()
 
     # Create PDF canvas
@@ -347,8 +358,8 @@ def generate_pdf(album: Album, image_folder: Path, output_path: Path) -> None:
 
     low_dpi_warnings: list[str] = []
 
-    for page_idx, page in enumerate(album["pages"]):
-        print(f"Processing page {page_idx + 1}/{len(album['pages'])} (layout: {page['layout']})")
+    for page_idx, page in enumerate(interior_pages):
+        print(f"Processing page {page_idx + 1}/{len(interior_pages)} (layout: {page['layout']})")
 
         if "columns" in page and page["columns"]:
             # Column-based layout: iterate columns left-to-right, cells top-to-bottom
@@ -442,7 +453,7 @@ def generate_pdf(album: Album, image_folder: Path, output_path: Path) -> None:
                     current_y_from_top += PRINT_GUTTER
 
         # Add page break (except for last page)
-        if page_idx < len(album["pages"]) - 1:
+        if page_idx < len(interior_pages) - 1:
             c.showPage()
 
     # Save PDF
@@ -450,7 +461,8 @@ def generate_pdf(album: Album, image_folder: Path, output_path: Path) -> None:
 
     print()
     print(f"PDF generated successfully: {output_path}")
-    print(f"Total pages: {len(album['pages'])}")
+    print(f"Interior pages rendered: {len(interior_pages)}")
+    print(f"(First and last album pages skipped - used for cover)")
 
     if low_dpi_warnings:
         print()

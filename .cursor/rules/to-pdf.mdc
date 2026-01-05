@@ -43,3 +43,6 @@ python generate_pdf.py /path/to/folder  # folder must contain album.json + image
 - **Color space**: sRGB
 - **Resampling**: Lanczos (high quality)
 - **DPI warning**: Below 200 DPI logged per image
+
+## Note
+First and last album pages are **skipped** by `generate_pdf.py` — they are used for the cover and rendered separately by `generate_cover.py`.

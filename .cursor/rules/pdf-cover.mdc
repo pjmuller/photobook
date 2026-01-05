@@ -38,3 +38,6 @@ Determined by paper page count: `(album_pages - 2) / 2`
 ## Constraints
 - First and last album pages must have layout '1' (single full-page image)
 - Script exits with error if cover pages have multiple cells
+
+## Note
+`generate_pdf.py` automatically skips first/last pages — they are only used here for the cover.
