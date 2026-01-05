@@ -135,5 +135,47 @@ onUnmounted(() => {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* Tooltips */
+.btn[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: -32px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 1000;
+}
+
+.btn[data-tooltip]::before {
+  content: '';
+  position: absolute;
+  bottom: -26px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-bottom-color: #333;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  z-index: 1000;
+}
+
+.btn[data-tooltip]:hover::after,
+.btn[data-tooltip]:hover::before {
+  opacity: 1;
+}
+
+.btn {
+  position: relative;
+}
 </style>
 
