@@ -23,7 +23,7 @@ from reportlab.pdfgen import canvas
 # UI dimensions (in pixels)
 UI_PAGE_WIDTH = 730
 UI_PAGE_HEIGHT = 598
-UI_GUTTER = 10
+UI_GUTTER = 7
 
 # Print dimensions (in mm)
 PRINT_PAGE_WIDTH = 356
