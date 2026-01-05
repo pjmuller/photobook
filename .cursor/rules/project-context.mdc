@@ -19,8 +19,11 @@ app/                          # Main application (Vite + Vue 3 + TS)
 │   │   └── useImageBank.ts         # EXIF date sorting
 │   └── components/           # Vue components (PageSpread, PhotoCell, etc.)
 ├── App.vue                   # Root state management, all mutations
+pdf_generator/                # Python CLI for PDF generation (see @.cursor/rules/to-pdf.mdc)
+├── generate_pdf.py           # Main script: reads album.json, outputs CMYK PDF
+├── pyproject.toml            # Dependencies: Pillow, ReportLab
+└── README.md
 grid_crop/                    # Prototypes (00_opus_45.html = reference implementation)
-source/                       # Sample JPG images for testing
 ```
 
 ## Key Algorithms

@@ -1,5 +1,12 @@
 todo
 
+- 1 hoog totale verticale hoogte, 2 ernaast dus vertical long gutter
+  - variant met links
+- 2x totale hoogte
+- allow zoom out less than 1x
+- no need for gutter on the pages
+
+
 separate prompt with ONLY with resizing gutters, single page, use 5 placeholder images? Try it 5x different ways. Find a way without explicit pixels.
 
 

@@ -1,6 +1,15 @@
-import { CONFIG, LAYOUTS, calculateDefaultRowHeights, calculateDefaultCellWidths } from '../config'
+import { 
+  CONFIG, 
+  ROW_LAYOUTS, 
+  COLUMN_LAYOUTS,
+  calculateDefaultRowHeights, 
+  calculateDefaultCellWidths,
+  calculateDefaultColumnWidths,
+  calculateDefaultCellHeights,
+  isColumnLayout 
+} from '../config'
 import type { LayoutType } from '../config'
-import type { Album, Page, Row, Cell } from '../types'
+import type { Album, Page, Row, Column, Cell } from '../types'
 
 /**
  * Generate a UUID for page IDs
@@ -10,10 +19,17 @@ function generateId(): string {
 }
 
 /**
- * Create a default cell with specified width
+ * Create a default cell with specified width (for row-based layouts)
  */
-function createEmptyCell(width: number): Cell {
+function createEmptyCellWithWidth(width: number): Cell {
   return { width }
+}
+
+/**
+ * Create a default cell with specified height (for column-based layouts)
+ */
+function createEmptyCellWithHeight(height: number): Cell {
+  return { height }
 }
 
 /**
@@ -23,7 +39,18 @@ function createRow(height: number, cellCount: number): Row {
   const widths = calculateDefaultCellWidths(cellCount)
   return {
     height,
-    cells: widths.map(w => createEmptyCell(w)),
+    cells: widths.map(w => createEmptyCellWithWidth(w)),
+  }
+}
+
+/**
+ * Create a column with the given width and cell count
+ */
+function createColumn(width: number, cellCount: number): Column {
+  const heights = calculateDefaultCellHeights(cellCount)
+  return {
+    width,
+    cells: heights.map(h => createEmptyCellWithHeight(h)),
   }
 }
 
@@ -31,14 +58,28 @@ function createRow(height: number, cellCount: number): Row {
  * Create a page with the given layout
  */
 export function createPage(layout: LayoutType): Page {
-  const cellsPerRow = LAYOUTS[layout]
-  const rowCount = cellsPerRow.length
-  const heights = calculateDefaultRowHeights(rowCount)
+  if (isColumnLayout(layout)) {
+    // Column-based layout
+    const cellsPerColumn = COLUMN_LAYOUTS[layout]
+    const columnCount = cellsPerColumn.length
+    const widths = calculateDefaultColumnWidths(columnCount)
+    
+    return {
+      id: generateId(),
+      layout,
+      columns: cellsPerColumn.map((cellCount, index) => createColumn(widths[index], cellCount)),
+    }
+  } else {
+    // Row-based layout
+    const cellsPerRow = ROW_LAYOUTS[layout]
+    const rowCount = cellsPerRow.length
+    const heights = calculateDefaultRowHeights(rowCount)
 
-  return {
-    id: generateId(),
-    layout,
-    rows: cellsPerRow.map((cellCount, index) => createRow(heights[index], cellCount)),
+    return {
+      id: generateId(),
+      layout,
+      rows: cellsPerRow.map((cellCount, index) => createRow(heights[index], cellCount)),
+    }
   }
 }
 
@@ -221,10 +262,20 @@ export async function fileExists(
 export function getUsedImages(album: Album): Set<string> {
   const used = new Set<string>()
   for (const page of album.pages) {
-    for (const row of page.rows) {
-      for (const cell of row.cells) {
-        if (cell.path) {
-          used.add(cell.path)
+    if (page.rows) {
+      for (const row of page.rows) {
+        for (const cell of row.cells) {
+          if (cell.path) {
+            used.add(cell.path)
+          }
+        }
+      }
+    } else if (page.columns) {
+      for (const column of page.columns) {
+        for (const cell of column.cells) {
+          if (cell.path) {
+            used.add(cell.path)
+          }
         }
       }
     }
@@ -233,7 +284,8 @@ export function getUsedImages(album: Album): Set<string> {
 }
 
 /**
- * Find which page/row/cell an image is in
+ * Find which page/row/cell (or page/column/cell) an image is in
+ * For column-based layouts, rowIndex represents columnIndex
  */
 export function findImageLocation(
   album: Album,
@@ -241,11 +293,24 @@ export function findImageLocation(
 ): { pageIndex: number; rowIndex: number; cellIndex: number } | null {
   for (let pageIndex = 0; pageIndex < album.pages.length; pageIndex++) {
     const page = album.pages[pageIndex]
-    for (let rowIndex = 0; rowIndex < page.rows.length; rowIndex++) {
-      const row = page.rows[rowIndex]
-      for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
-        if (row.cells[cellIndex].path === imagePath) {
-          return { pageIndex, rowIndex, cellIndex }
+    
+    if (page.rows) {
+      for (let rowIndex = 0; rowIndex < page.rows.length; rowIndex++) {
+        const row = page.rows[rowIndex]
+        for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
+          if (row.cells[cellIndex].path === imagePath) {
+            return { pageIndex, rowIndex, cellIndex }
+          }
+        }
+      }
+    } else if (page.columns) {
+      for (let columnIndex = 0; columnIndex < page.columns.length; columnIndex++) {
+        const column = page.columns[columnIndex]
+        for (let cellIndex = 0; cellIndex < column.cells.length; cellIndex++) {
+          if (column.cells[cellIndex].path === imagePath) {
+            // Return columnIndex as rowIndex for API compatibility
+            return { pageIndex, rowIndex: columnIndex, cellIndex }
+          }
         }
       }
     }

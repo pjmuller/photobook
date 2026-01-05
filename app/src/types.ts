@@ -6,9 +6,10 @@ export interface FocalPoint {
   y: number
 }
 
-// A cell within a row - can be empty or contain an image
+// A cell within a row or column - can be empty or contain an image
 export interface Cell {
-  width: number
+  width?: number   // used in row-based layouts
+  height?: number  // used in column-based layouts
   path?: string
   focalPoint?: FocalPoint
   zoom?: number
@@ -19,17 +20,24 @@ export interface Cell {
   crop_height?: number
 }
 
-// A row within a page
+// A row within a page (for row-based layouts)
 export interface Row {
   height: number
   cells: Cell[]
 }
 
-// A single page in the album
+// A column within a page (for column-based layouts)
+export interface Column {
+  width: number
+  cells: Cell[]  // cells stacked vertically within the column
+}
+
+// A single page in the album - has either rows OR columns, never both
 export interface Page {
   id: string
   layout: LayoutType
-  rows: Row[]
+  rows?: Row[]      // for row-based layouts ('1', '2-2', '2-3', '3-2')
+  columns?: Column[] // for column-based layouts ('1-1', '1-2', '2-1')
 }
 
 // The complete album.json structure

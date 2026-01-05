@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import type { Row, ImageInfo, FocalPoint } from '../types'
+import type { Column, ImageInfo, FocalPoint } from '../types'
 import PhotoCell from './PhotoCell.vue'
 import GutterComponent from './GutterComponent.vue'
 
 const props = defineProps<{
-  row: Row
+  column: Column
   pageId: string
-  rowIndex: number
+  columnIndex: number
   images: Map<string, ImageInfo>
   cropModePageId: string | null
-  cropModeRowIndex: number | null
+  cropModeColumnIndex: number | null
   cropModeCellIndex: number | null
 }>()
 
@@ -22,7 +22,7 @@ const emit = defineEmits<{
   updateCrop: [cellIndex: number, focalPoint: FocalPoint, zoom: number]
   imageDrop: [cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number]
   imageRemove: [cellIndex: number]
-  imageSwap: [cellIndex: number, fromPageId: string, fromRowIndex: number, fromCellIndex: number]
+  imageSwap: [cellIndex: number, fromPageId: string, fromColumnIndex: number, fromCellIndex: number]
 }>()
 
 // Get image info for a cell
@@ -35,12 +35,12 @@ function getImageInfo(path?: string): ImageInfo | undefined {
 function isCellInCropMode(cellIndex: number): boolean {
   return (
     props.cropModePageId === props.pageId &&
-    props.cropModeRowIndex === props.rowIndex &&
+    props.cropModeColumnIndex === props.columnIndex &&
     props.cropModeCellIndex === cellIndex
   )
 }
 
-// Handle cell resize
+// Handle cell resize (vertical for column-based)
 function handleResizeStart(cellIndex: number) {
   emit('resizeCellStart', cellIndex)
 }
@@ -75,21 +75,21 @@ function handleImageRemove(cellIndex: number) {
   emit('imageRemove', cellIndex)
 }
 
-function handleImageSwap(cellIndex: number, fromPageId: string, fromRowIndex: number, fromCellIndex: number) {
-  emit('imageSwap', cellIndex, fromPageId, fromRowIndex, fromCellIndex)
+function handleImageSwap(cellIndex: number, fromPageId: string, fromColumnIndex: number, fromCellIndex: number) {
+  emit('imageSwap', cellIndex, fromPageId, fromColumnIndex, fromCellIndex)
 }
 </script>
 
 <template>
   <div
-    class="page-row"
-    :style="{ height: `${row.height}px` }"
+    class="page-column"
+    :style="{ width: `${column.width}px` }"
   >
-    <template v-for="(cell, cellIndex) in row.cells" :key="cellIndex">
-      <!-- Gutter between cells (not before first) -->
+    <template v-for="(cell, cellIndex) in column.cells" :key="cellIndex">
+      <!-- Gutter between cells (not before first) - vertical gutters between stacked cells -->
       <GutterComponent
         v-if="cellIndex > 0"
-        orientation="horizontal"
+        orientation="vertical"
         :index="cellIndex - 1"
         @resize-start="handleResizeStart(cellIndex - 1)"
         @resize="(delta) => handleResize(cellIndex - 1, delta)"
@@ -98,10 +98,10 @@ function handleImageSwap(cellIndex: number, fromPageId: string, fromRowIndex: nu
       
       <PhotoCell
         :cell="cell"
-        :cell-width="cell.width ?? 0"
-        :cell-height="row.height"
+        :cell-width="column.width"
+        :cell-height="cell.height ?? 0"
         :page-id="pageId"
-        :row-index="rowIndex"
+        :row-index="columnIndex"
         :cell-index="cellIndex"
         :image-info="getImageInfo(cell.path)"
         :is-crop-mode="isCellInCropMode(cellIndex)"
@@ -117,9 +117,10 @@ function handleImageSwap(cellIndex: number, fromPageId: string, fromRowIndex: nu
 </template>
 
 <style scoped>
-.page-row {
+.page-column {
   display: flex;
-  width: 100%;
+  flex-direction: column;
+  height: 100%;
   flex-shrink: 0;
 }
 </style>

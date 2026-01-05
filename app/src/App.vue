@@ -1,8 +1,17 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
-import type { Page, ImageInfo, FocalPoint, Album, AlbumState } from './types'
+import type { Page, ImageInfo, FocalPoint, Album, AlbumState, Row, Column, Cell } from './types'
 import type { LayoutType } from './config'
-import { CONFIG, LAYOUTS, calculateDefaultRowHeights, calculateDefaultCellWidths } from './config'
+import { 
+  CONFIG, 
+  ROW_LAYOUTS, 
+  COLUMN_LAYOUTS,
+  calculateDefaultRowHeights, 
+  calculateDefaultCellWidths,
+  calculateDefaultColumnWidths,
+  calculateDefaultCellHeights,
+  isColumnLayout 
+} from './config'
 import {
   createPage,
   createDefaultAlbum,
@@ -49,9 +58,17 @@ const pageLabel = computed(() => `Page ${state.currentSpreadIndex + 1} / ${total
 const usedImagePaths = computed(() => {
   const used = new Set<string>()
   for (const page of state.pages) {
-    for (const row of page.rows) {
-      for (const cell of row.cells) {
-        if (cell.path) used.add(cell.path)
+    if (page.rows) {
+      for (const row of page.rows) {
+        for (const cell of row.cells) {
+          if (cell.path) used.add(cell.path)
+        }
+      }
+    } else if (page.columns) {
+      for (const column of page.columns) {
+        for (const cell of column.cells) {
+          if (cell.path) used.add(cell.path)
+        }
       }
     }
   }
@@ -250,80 +267,149 @@ function handleChangeLayout(pageId: string, newLayout: LayoutType) {
   const oldLayout = page.layout
   if (oldLayout === newLayout) return
   
-  // Collect existing images
+  // Collect existing images from either rows or columns
   const existingImages: { path: string; focalPoint: FocalPoint; zoom: number; width?: number; height?: number }[] = []
-  for (const row of page.rows) {
-    for (const cell of row.cells) {
-      if (cell.path) {
-        const imgInfo = imageMap.value.get(cell.path)
-        existingImages.push({
-          path: cell.path,
-          focalPoint: cell.focalPoint || { x: 0.5, y: 0.5 },
-          zoom: cell.zoom || CONFIG.MIN_ZOOM,
-          width: imgInfo?.naturalWidth,
-          height: imgInfo?.naturalHeight,
-        })
+  
+  if (page.rows) {
+    for (const row of page.rows) {
+      for (const cell of row.cells) {
+        if (cell.path) {
+          const imgInfo = imageMap.value.get(cell.path)
+          existingImages.push({
+            path: cell.path,
+            focalPoint: cell.focalPoint || { x: 0.5, y: 0.5 },
+            zoom: cell.zoom || CONFIG.MIN_ZOOM,
+            width: imgInfo?.naturalWidth,
+            height: imgInfo?.naturalHeight,
+          })
+        }
+      }
+    }
+  } else if (page.columns) {
+    for (const column of page.columns) {
+      for (const cell of column.cells) {
+        if (cell.path) {
+          const imgInfo = imageMap.value.get(cell.path)
+          existingImages.push({
+            path: cell.path,
+            focalPoint: cell.focalPoint || { x: 0.5, y: 0.5 },
+            zoom: cell.zoom || CONFIG.MIN_ZOOM,
+            width: imgInfo?.naturalWidth,
+            height: imgInfo?.naturalHeight,
+          })
+        }
       }
     }
   }
   
-  // Create new layout structure
-  const newCellsPerRow = LAYOUTS[newLayout]
-  const rowCount = newCellsPerRow.length
-  const heights = calculateDefaultRowHeights(rowCount)
+  // Check if new layout is column-based
+  const isNewColumnLayout = isColumnLayout(newLayout)
   
-  const newRows = newCellsPerRow.map((cellCount, rowIndex) => {
-    const widths = calculateDefaultCellWidths(cellCount)
-    return {
-      height: heights[rowIndex],
-      cells: widths.map(w => ({ width: w } as any)),
-    }
-  })
-  
-  // Place images into new cells (top-left to bottom-right)
-  let imgIndex = 0
-  
-  for (let rowIdx = 0; rowIdx < newRows.length && imgIndex < existingImages.length; rowIdx++) {
-    for (let cellIdx = 0; cellIdx < newRows[rowIdx].cells.length && imgIndex < existingImages.length; cellIdx++) {
-      const img = existingImages[imgIndex]
-      const cell = newRows[rowIdx].cells[cellIdx]
-      
-      cell.path = img.path
-      cell.focalPoint = img.focalPoint
-      cell.zoom = img.zoom
-      
-      // Recalculate crop for new cell dimensions
-      if (img.width && img.height) {
-        const crop = calculateCrop(
-          { width: img.width, height: img.height },
-          { width: cell.width, height: newRows[rowIdx].height },
-          img.focalPoint,
-          img.zoom
-        )
-        Object.assign(cell, crop)
+  if (isNewColumnLayout) {
+    // Create column-based layout
+    const cellsPerColumn = COLUMN_LAYOUTS[newLayout]
+    const columnCount = cellsPerColumn.length
+    const columnWidths = calculateDefaultColumnWidths(columnCount)
+    
+    const newColumns: Column[] = cellsPerColumn.map((cellCount, colIndex) => {
+      const cellHeights = calculateDefaultCellHeights(cellCount)
+      return {
+        width: columnWidths[colIndex],
+        cells: cellHeights.map(h => ({ height: h })),
       }
-      
-      imgIndex++
+    })
+    
+    // Place images into new cells (left-to-right, top-to-bottom within each column)
+    let imgIndex = 0
+    
+    for (let colIdx = 0; colIdx < newColumns.length && imgIndex < existingImages.length; colIdx++) {
+      for (let cellIdx = 0; cellIdx < newColumns[colIdx].cells.length && imgIndex < existingImages.length; cellIdx++) {
+        const img = existingImages[imgIndex]
+        const cell = newColumns[colIdx].cells[cellIdx]
+        
+        cell.path = img.path
+        cell.focalPoint = img.focalPoint
+        cell.zoom = img.zoom
+        
+        // Recalculate crop for new cell dimensions
+        if (img.width && img.height) {
+          const crop = calculateCrop(
+            { width: img.width, height: img.height },
+            { width: newColumns[colIdx].width, height: cell.height! },
+            img.focalPoint,
+            img.zoom
+          )
+          Object.assign(cell, crop)
+        }
+        
+        imgIndex++
+      }
     }
+    
+    // Update page - switch to columns
+    page.layout = newLayout
+    delete page.rows
+    page.columns = newColumns
+  } else {
+    // Create row-based layout
+    const cellsPerRow = ROW_LAYOUTS[newLayout]
+    const rowCount = cellsPerRow.length
+    const heights = calculateDefaultRowHeights(rowCount)
+    
+    const newRows: Row[] = cellsPerRow.map((cellCount, rowIndex) => {
+      const widths = calculateDefaultCellWidths(cellCount)
+      return {
+        height: heights[rowIndex],
+        cells: widths.map(w => ({ width: w })),
+      }
+    })
+    
+    // Place images into new cells (top-left to bottom-right)
+    let imgIndex = 0
+    
+    for (let rowIdx = 0; rowIdx < newRows.length && imgIndex < existingImages.length; rowIdx++) {
+      for (let cellIdx = 0; cellIdx < newRows[rowIdx].cells.length && imgIndex < existingImages.length; cellIdx++) {
+        const img = existingImages[imgIndex]
+        const cell = newRows[rowIdx].cells[cellIdx]
+        
+        cell.path = img.path
+        cell.focalPoint = img.focalPoint
+        cell.zoom = img.zoom
+        
+        // Recalculate crop for new cell dimensions
+        if (img.width && img.height) {
+          const crop = calculateCrop(
+            { width: img.width, height: img.height },
+            { width: cell.width!, height: newRows[rowIdx].height },
+            img.focalPoint,
+            img.zoom
+          )
+          Object.assign(cell, crop)
+        }
+        
+        imgIndex++
+      }
+    }
+    
+    // Update page - switch to rows
+    page.layout = newLayout
+    delete page.columns
+    page.rows = newRows
   }
-  
-  // Update page
-  page.layout = newLayout
-  page.rows = newRows
 }
 
 // Resize handlers
-let resizeStartValues: { heights?: number[]; widths?: number[] } = {}
+let resizeStartValues: { heights?: number[]; widths?: number[]; columnWidths?: number[] } = {}
 
 function handleResizeRowStart(pageId: string, _rowIndex: number) {
   const page = findPage(pageId)
-  if (!page) return
+  if (!page || !page.rows) return
   resizeStartValues.heights = page.rows.map(r => r.height)
 }
 
 function handleResizeRow(pageId: string, rowIndex: number, delta: number) {
   const page = findPage(pageId)
-  if (!page || !resizeStartValues.heights) return
+  if (!page || !page.rows || !resizeStartValues.heights) return
   
   const totalRows = page.rows.length
   if (rowIndex >= totalRows - 1) return
@@ -356,25 +442,25 @@ function handleResizeRowEnd(_pageId: string, _rowIndex: number, _delta: number) 
   resizeStartValues = {}
 }
 
-function handleResizeCellStart(pageId: string, rowIndex: number, _cellIndex: number) {
+// Column resize handlers (for column-based layouts)
+function handleResizeColumnStart(pageId: string, _columnIndex: number) {
   const page = findPage(pageId)
-  if (!page) return
-  resizeStartValues.widths = page.rows[rowIndex].cells.map(c => c.width)
+  if (!page || !page.columns) return
+  resizeStartValues.columnWidths = page.columns.map(c => c.width)
 }
 
-function handleResizeCell(pageId: string, rowIndex: number, cellIndex: number, delta: number) {
+function handleResizeColumn(pageId: string, columnIndex: number, delta: number) {
   const page = findPage(pageId)
-  if (!page || !resizeStartValues.widths) return
+  if (!page || !page.columns || !resizeStartValues.columnWidths) return
   
-  const row = page.rows[rowIndex]
-  const totalCells = row.cells.length
-  if (cellIndex >= totalCells - 1) return
+  const totalColumns = page.columns.length
+  if (columnIndex >= totalColumns - 1) return
   
-  const cell1 = row.cells[cellIndex]
-  const cell2 = row.cells[cellIndex + 1]
+  const col1 = page.columns[columnIndex]
+  const col2 = page.columns[columnIndex + 1]
   
-  const startWidth1 = resizeStartValues.widths[cellIndex]
-  const startWidth2 = resizeStartValues.widths[cellIndex + 1]
+  const startWidth1 = resizeStartValues.columnWidths[columnIndex]
+  const startWidth2 = resizeStartValues.columnWidths[columnIndex + 1]
   
   // Calculate new widths
   let newWidth1 = startWidth1 + delta
@@ -386,22 +472,110 @@ function handleResizeCell(pageId: string, rowIndex: number, cellIndex: number, d
   newWidth1 = clamp(newWidth1, CONFIG.CELL_MIN_WIDTH, maxWidth1)
   newWidth2 = startWidth1 + startWidth2 - newWidth1
   
-  cell1.width = newWidth1
-  cell2.width = newWidth2
+  col1.width = newWidth1
+  col2.width = newWidth2
   
-  // Recalculate crops for affected cells
-  recalculateCropForCell(page, rowIndex, cellIndex)
-  recalculateCropForCell(page, rowIndex, cellIndex + 1)
+  // Recalculate crops for affected columns
+  recalculateCropsForColumn(page, columnIndex)
+  recalculateCropsForColumn(page, columnIndex + 1)
 }
 
-function handleResizeCellEnd(_pageId: string, _rowIndex: number, _cellIndex: number, _delta: number) {
+function handleResizeColumnEnd(_pageId: string, _columnIndex: number, _delta: number) {
   resizeStartValues = {}
 }
 
-// Recalculate crop for a cell
-function recalculateCropForCell(page: Page, rowIndex: number, cellIndex: number) {
-  const row = page.rows[rowIndex]
-  const cell = row.cells[cellIndex]
+// Cell resize handlers (work for both row-based and column-based layouts)
+function handleResizeCellStart(pageId: string, containerIndex: number, _cellIndex: number) {
+  const page = findPage(pageId)
+  if (!page) return
+  
+  if (page.rows) {
+    resizeStartValues.widths = page.rows[containerIndex].cells.map(c => c.width!)
+  } else if (page.columns) {
+    resizeStartValues.heights = page.columns[containerIndex].cells.map(c => c.height!)
+  }
+}
+
+function handleResizeCell(pageId: string, containerIndex: number, cellIndex: number, delta: number) {
+  const page = findPage(pageId)
+  if (!page) return
+  
+  if (page.rows && resizeStartValues.widths) {
+    // Row-based: resize cell widths horizontally
+    const row = page.rows[containerIndex]
+    const totalCells = row.cells.length
+    if (cellIndex >= totalCells - 1) return
+    
+    const cell1 = row.cells[cellIndex]
+    const cell2 = row.cells[cellIndex + 1]
+    
+    const startWidth1 = resizeStartValues.widths[cellIndex]
+    const startWidth2 = resizeStartValues.widths[cellIndex + 1]
+    
+    let newWidth1 = startWidth1 + delta
+    let newWidth2 = startWidth2 - delta
+    
+    const maxWidth1 = startWidth1 + startWidth2 - CONFIG.CELL_MIN_WIDTH
+    
+    newWidth1 = clamp(newWidth1, CONFIG.CELL_MIN_WIDTH, maxWidth1)
+    newWidth2 = startWidth1 + startWidth2 - newWidth1
+    
+    cell1.width = newWidth1
+    cell2.width = newWidth2
+    
+    recalculateCropForCell(page, containerIndex, cellIndex)
+    recalculateCropForCell(page, containerIndex, cellIndex + 1)
+  } else if (page.columns && resizeStartValues.heights) {
+    // Column-based: resize cell heights vertically
+    const column = page.columns[containerIndex]
+    const totalCells = column.cells.length
+    if (cellIndex >= totalCells - 1) return
+    
+    const cell1 = column.cells[cellIndex]
+    const cell2 = column.cells[cellIndex + 1]
+    
+    const startHeight1 = resizeStartValues.heights[cellIndex]
+    const startHeight2 = resizeStartValues.heights[cellIndex + 1]
+    
+    let newHeight1 = startHeight1 + delta
+    let newHeight2 = startHeight2 - delta
+    
+    const maxHeight1 = startHeight1 + startHeight2 - CONFIG.ROW_MIN_HEIGHT
+    
+    newHeight1 = clamp(newHeight1, CONFIG.ROW_MIN_HEIGHT, maxHeight1)
+    newHeight2 = startHeight1 + startHeight2 - newHeight1
+    
+    cell1.height = newHeight1
+    cell2.height = newHeight2
+    
+    recalculateCropForCell(page, containerIndex, cellIndex)
+    recalculateCropForCell(page, containerIndex, cellIndex + 1)
+  }
+}
+
+function handleResizeCellEnd(_pageId: string, _containerIndex: number, _cellIndex: number, _delta: number) {
+  resizeStartValues = {}
+}
+
+// Recalculate crop for a cell (works for both row-based and column-based layouts)
+function recalculateCropForCell(page: Page, containerIndex: number, cellIndex: number) {
+  let cell: Cell
+  let cellWidth: number
+  let cellHeight: number
+  
+  if (page.rows) {
+    const row = page.rows[containerIndex]
+    cell = row.cells[cellIndex]
+    cellWidth = cell.width!
+    cellHeight = row.height
+  } else if (page.columns) {
+    const column = page.columns[containerIndex]
+    cell = column.cells[cellIndex]
+    cellWidth = column.width
+    cellHeight = cell.height!
+  } else {
+    return
+  }
   
   if (!cell.path) return
   
@@ -410,7 +584,7 @@ function recalculateCropForCell(page: Page, rowIndex: number, cellIndex: number)
   
   const crop = calculateCrop(
     { width: imgInfo.naturalWidth, height: imgInfo.naturalHeight },
-    { width: cell.width, height: row.height },
+    { width: cellWidth, height: cellHeight },
     cell.focalPoint || { x: 0.5, y: 0.5 },
     cell.zoom || CONFIG.MIN_ZOOM
   )
@@ -420,9 +594,19 @@ function recalculateCropForCell(page: Page, rowIndex: number, cellIndex: number)
 
 // Recalculate crops for all cells in a row
 function recalculateCropsForRow(page: Page, rowIndex: number) {
+  if (!page.rows) return
   const row = page.rows[rowIndex]
   for (let cellIndex = 0; cellIndex < row.cells.length; cellIndex++) {
     recalculateCropForCell(page, rowIndex, cellIndex)
+  }
+}
+
+// Recalculate crops for all cells in a column
+function recalculateCropsForColumn(page: Page, columnIndex: number) {
+  if (!page.columns) return
+  const column = page.columns[columnIndex]
+  for (let cellIndex = 0; cellIndex < column.cells.length; cellIndex++) {
+    recalculateCropForCell(page, columnIndex, cellIndex)
   }
 }
 
@@ -435,11 +619,26 @@ function handleExitCropMode() {
   state.cropModeCell = null
 }
 
-function handleUpdateCrop(pageId: string, rowIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
+function handleUpdateCrop(pageId: string, containerIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
   const page = findPage(pageId)
   if (!page) return
   
-  const cell = page.rows[rowIndex].cells[cellIndex]
+  let cell: Cell
+  let cellWidth: number
+  let cellHeight: number
+  
+  if (page.rows) {
+    cell = page.rows[containerIndex].cells[cellIndex]
+    cellWidth = cell.width!
+    cellHeight = page.rows[containerIndex].height
+  } else if (page.columns) {
+    cell = page.columns[containerIndex].cells[cellIndex]
+    cellWidth = page.columns[containerIndex].width
+    cellHeight = cell.height!
+  } else {
+    return
+  }
+  
   if (!cell.path) return
   
   cell.focalPoint = focalPoint
@@ -450,7 +649,7 @@ function handleUpdateCrop(pageId: string, rowIndex: number, cellIndex: number, f
   if (imgInfo?.naturalWidth && imgInfo?.naturalHeight) {
     const crop = calculateCrop(
       { width: imgInfo.naturalWidth, height: imgInfo.naturalHeight },
-      { width: cell.width, height: page.rows[rowIndex].height },
+      { width: cellWidth, height: cellHeight },
       focalPoint,
       zoom
     )
@@ -458,10 +657,28 @@ function handleUpdateCrop(pageId: string, rowIndex: number, cellIndex: number, f
   }
 }
 
+// Helper to get cell and dimensions from a page (works for both row and column layouts)
+function getCellAndDimensions(page: Page, containerIndex: number, cellIndex: number): { cell: Cell; width: number; height: number } | null {
+  if (page.rows) {
+    const row = page.rows[containerIndex]
+    if (!row) return null
+    const cell = row.cells[cellIndex]
+    if (!cell) return null
+    return { cell, width: cell.width!, height: row.height }
+  } else if (page.columns) {
+    const column = page.columns[containerIndex]
+    if (!column) return null
+    const cell = column.cells[cellIndex]
+    if (!cell) return null
+    return { cell, width: column.width, height: cell.height! }
+  }
+  return null
+}
+
 // Image operations
 function handleImageDrop(
   pageId: string,
-  rowIndex: number,
+  containerIndex: number,
   cellIndex: number,
   imagePath: string,
   naturalWidth: number,
@@ -470,8 +687,10 @@ function handleImageDrop(
   const page = findPage(pageId)
   if (!page) return
   
-  const cell = page.rows[rowIndex].cells[cellIndex]
-  const row = page.rows[rowIndex]
+  const result = getCellAndDimensions(page, containerIndex, cellIndex)
+  if (!result) return
+  
+  const { cell, width, height } = result
   
   // If cell already has an image, it will be available in bank again
   // (no need to explicitly remove, just overwrite)
@@ -479,7 +698,7 @@ function handleImageDrop(
   // Set new image with default crop
   const { focalPoint, zoom, crop } = getDefaultCrop(
     { width: naturalWidth, height: naturalHeight },
-    { width: cell.width, height: row.height }
+    { width, height }
   )
   
   cell.path = imagePath
@@ -488,11 +707,14 @@ function handleImageDrop(
   Object.assign(cell, crop)
 }
 
-function handleImageRemove(pageId: string, rowIndex: number, cellIndex: number) {
+function handleImageRemove(pageId: string, containerIndex: number, cellIndex: number) {
   const page = findPage(pageId)
   if (!page) return
   
-  const cell = page.rows[rowIndex].cells[cellIndex]
+  const result = getCellAndDimensions(page, containerIndex, cellIndex)
+  if (!result) return
+  
+  const { cell } = result
   
   // Clear image data
   delete cell.path
@@ -506,20 +728,22 @@ function handleImageRemove(pageId: string, rowIndex: number, cellIndex: number) 
 
 function handleImageSwap(
   pageId: string,
-  rowIndex: number,
+  containerIndex: number,
   cellIndex: number,
   fromPageId: string,
-  fromRowIndex: number,
+  fromContainerIndex: number,
   fromCellIndex: number
 ) {
   const toPage = findPage(pageId)
   const fromPage = findPage(fromPageId)
   if (!toPage || !fromPage) return
   
-  const toCell = toPage.rows[rowIndex].cells[cellIndex]
-  const fromCell = fromPage.rows[fromRowIndex].cells[fromCellIndex]
-  const toRow = toPage.rows[rowIndex]
-  const fromRow = fromPage.rows[fromRowIndex]
+  const toResult = getCellAndDimensions(toPage, containerIndex, cellIndex)
+  const fromResult = getCellAndDimensions(fromPage, fromContainerIndex, fromCellIndex)
+  if (!toResult || !fromResult) return
+  
+  const { cell: toCell, width: toWidth, height: toHeight } = toResult
+  const { cell: fromCell, width: fromWidth, height: fromHeight } = fromResult
   
   // Store source image data
   const fromData = {
@@ -550,7 +774,7 @@ function handleImageSwap(
     if (imgInfo?.naturalWidth && imgInfo?.naturalHeight) {
       const crop = calculateCrop(
         { width: imgInfo.naturalWidth, height: imgInfo.naturalHeight },
-        { width: toCell.width, height: toRow.height },
+        { width: toWidth, height: toHeight },
         fromData.focalPoint || { x: 0.5, y: 0.5 },
         fromData.zoom || CONFIG.MIN_ZOOM
       )
@@ -568,7 +792,7 @@ function handleImageSwap(
     if (imgInfo?.naturalWidth && imgInfo?.naturalHeight) {
       const crop = calculateCrop(
         { width: imgInfo.naturalWidth, height: imgInfo.naturalHeight },
-        { width: fromCell.width, height: fromRow.height },
+        { width: fromWidth, height: fromHeight },
         toData.focalPoint || { x: 0.5, y: 0.5 },
         toData.zoom || CONFIG.MIN_ZOOM
       )
@@ -681,6 +905,9 @@ onUnmounted(() => {
           @resize-row-start="handleResizeRowStart"
           @resize-row="handleResizeRow"
           @resize-row-end="handleResizeRowEnd"
+          @resize-column-start="handleResizeColumnStart"
+          @resize-column="handleResizeColumn"
+          @resize-column-end="handleResizeColumnEnd"
           @resize-cell-start="handleResizeCellStart"
           @resize-cell="handleResizeCell"
           @resize-cell-end="handleResizeCellEnd"

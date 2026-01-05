@@ -18,15 +18,18 @@ const emit = defineEmits<{
   resizeRowStart: [pageId: string, rowIndex: number]
   resizeRow: [pageId: string, rowIndex: number, delta: number]
   resizeRowEnd: [pageId: string, rowIndex: number, delta: number]
-  resizeCellStart: [pageId: string, rowIndex: number, cellIndex: number]
-  resizeCell: [pageId: string, rowIndex: number, cellIndex: number, delta: number]
-  resizeCellEnd: [pageId: string, rowIndex: number, cellIndex: number, delta: number]
-  enterCropMode: [pageId: string, rowIndex: number, cellIndex: number]
+  resizeColumnStart: [pageId: string, columnIndex: number]
+  resizeColumn: [pageId: string, columnIndex: number, delta: number]
+  resizeColumnEnd: [pageId: string, columnIndex: number, delta: number]
+  resizeCellStart: [pageId: string, containerIndex: number, cellIndex: number]
+  resizeCell: [pageId: string, containerIndex: number, cellIndex: number, delta: number]
+  resizeCellEnd: [pageId: string, containerIndex: number, cellIndex: number, delta: number]
+  enterCropMode: [pageId: string, containerIndex: number, cellIndex: number]
   exitCropMode: []
-  updateCrop: [pageId: string, rowIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number]
-  imageDrop: [pageId: string, rowIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number]
-  imageRemove: [pageId: string, rowIndex: number, cellIndex: number]
-  imageSwap: [pageId: string, rowIndex: number, cellIndex: number, fromPageId: string, fromRowIndex: number, fromCellIndex: number]
+  updateCrop: [pageId: string, containerIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number]
+  imageDrop: [pageId: string, containerIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number]
+  imageRemove: [pageId: string, containerIndex: number, cellIndex: number]
+  imageSwap: [pageId: string, containerIndex: number, cellIndex: number, fromPageId: string, fromContainerIndex: number, fromCellIndex: number]
 }>()
 
 // Left page events
@@ -46,36 +49,48 @@ function handleLeftResizeRowEnd(rowIndex: number, delta: number) {
   emit('resizeRowEnd', props.leftPage.id, rowIndex, delta)
 }
 
-function handleLeftResizeCellStart(rowIndex: number, cellIndex: number) {
-  emit('resizeCellStart', props.leftPage.id, rowIndex, cellIndex)
+function handleLeftResizeColumnStart(columnIndex: number) {
+  emit('resizeColumnStart', props.leftPage.id, columnIndex)
 }
 
-function handleLeftResizeCell(rowIndex: number, cellIndex: number, delta: number) {
-  emit('resizeCell', props.leftPage.id, rowIndex, cellIndex, delta)
+function handleLeftResizeColumn(columnIndex: number, delta: number) {
+  emit('resizeColumn', props.leftPage.id, columnIndex, delta)
 }
 
-function handleLeftResizeCellEnd(rowIndex: number, cellIndex: number, delta: number) {
-  emit('resizeCellEnd', props.leftPage.id, rowIndex, cellIndex, delta)
+function handleLeftResizeColumnEnd(columnIndex: number, delta: number) {
+  emit('resizeColumnEnd', props.leftPage.id, columnIndex, delta)
 }
 
-function handleLeftEnterCropMode(rowIndex: number, cellIndex: number) {
-  emit('enterCropMode', props.leftPage.id, rowIndex, cellIndex)
+function handleLeftResizeCellStart(containerIndex: number, cellIndex: number) {
+  emit('resizeCellStart', props.leftPage.id, containerIndex, cellIndex)
 }
 
-function handleLeftUpdateCrop(rowIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
-  emit('updateCrop', props.leftPage.id, rowIndex, cellIndex, focalPoint, zoom)
+function handleLeftResizeCell(containerIndex: number, cellIndex: number, delta: number) {
+  emit('resizeCell', props.leftPage.id, containerIndex, cellIndex, delta)
 }
 
-function handleLeftImageDrop(rowIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number) {
-  emit('imageDrop', props.leftPage.id, rowIndex, cellIndex, imagePath, naturalWidth, naturalHeight)
+function handleLeftResizeCellEnd(containerIndex: number, cellIndex: number, delta: number) {
+  emit('resizeCellEnd', props.leftPage.id, containerIndex, cellIndex, delta)
 }
 
-function handleLeftImageRemove(rowIndex: number, cellIndex: number) {
-  emit('imageRemove', props.leftPage.id, rowIndex, cellIndex)
+function handleLeftEnterCropMode(containerIndex: number, cellIndex: number) {
+  emit('enterCropMode', props.leftPage.id, containerIndex, cellIndex)
 }
 
-function handleLeftImageSwap(rowIndex: number, cellIndex: number, fromPageId: string, fromRowIndex: number, fromCellIndex: number) {
-  emit('imageSwap', props.leftPage.id, rowIndex, cellIndex, fromPageId, fromRowIndex, fromCellIndex)
+function handleLeftUpdateCrop(containerIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
+  emit('updateCrop', props.leftPage.id, containerIndex, cellIndex, focalPoint, zoom)
+}
+
+function handleLeftImageDrop(containerIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number) {
+  emit('imageDrop', props.leftPage.id, containerIndex, cellIndex, imagePath, naturalWidth, naturalHeight)
+}
+
+function handleLeftImageRemove(containerIndex: number, cellIndex: number) {
+  emit('imageRemove', props.leftPage.id, containerIndex, cellIndex)
+}
+
+function handleLeftImageSwap(containerIndex: number, cellIndex: number, fromPageId: string, fromContainerIndex: number, fromCellIndex: number) {
+  emit('imageSwap', props.leftPage.id, containerIndex, cellIndex, fromPageId, fromContainerIndex, fromCellIndex)
 }
 
 // Right page events
@@ -95,36 +110,48 @@ function handleRightResizeRowEnd(rowIndex: number, delta: number) {
   emit('resizeRowEnd', props.rightPage.id, rowIndex, delta)
 }
 
-function handleRightResizeCellStart(rowIndex: number, cellIndex: number) {
-  emit('resizeCellStart', props.rightPage.id, rowIndex, cellIndex)
+function handleRightResizeColumnStart(columnIndex: number) {
+  emit('resizeColumnStart', props.rightPage.id, columnIndex)
 }
 
-function handleRightResizeCell(rowIndex: number, cellIndex: number, delta: number) {
-  emit('resizeCell', props.rightPage.id, rowIndex, cellIndex, delta)
+function handleRightResizeColumn(columnIndex: number, delta: number) {
+  emit('resizeColumn', props.rightPage.id, columnIndex, delta)
 }
 
-function handleRightResizeCellEnd(rowIndex: number, cellIndex: number, delta: number) {
-  emit('resizeCellEnd', props.rightPage.id, rowIndex, cellIndex, delta)
+function handleRightResizeColumnEnd(columnIndex: number, delta: number) {
+  emit('resizeColumnEnd', props.rightPage.id, columnIndex, delta)
 }
 
-function handleRightEnterCropMode(rowIndex: number, cellIndex: number) {
-  emit('enterCropMode', props.rightPage.id, rowIndex, cellIndex)
+function handleRightResizeCellStart(containerIndex: number, cellIndex: number) {
+  emit('resizeCellStart', props.rightPage.id, containerIndex, cellIndex)
 }
 
-function handleRightUpdateCrop(rowIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
-  emit('updateCrop', props.rightPage.id, rowIndex, cellIndex, focalPoint, zoom)
+function handleRightResizeCell(containerIndex: number, cellIndex: number, delta: number) {
+  emit('resizeCell', props.rightPage.id, containerIndex, cellIndex, delta)
 }
 
-function handleRightImageDrop(rowIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number) {
-  emit('imageDrop', props.rightPage.id, rowIndex, cellIndex, imagePath, naturalWidth, naturalHeight)
+function handleRightResizeCellEnd(containerIndex: number, cellIndex: number, delta: number) {
+  emit('resizeCellEnd', props.rightPage.id, containerIndex, cellIndex, delta)
 }
 
-function handleRightImageRemove(rowIndex: number, cellIndex: number) {
-  emit('imageRemove', props.rightPage.id, rowIndex, cellIndex)
+function handleRightEnterCropMode(containerIndex: number, cellIndex: number) {
+  emit('enterCropMode', props.rightPage.id, containerIndex, cellIndex)
 }
 
-function handleRightImageSwap(rowIndex: number, cellIndex: number, fromPageId: string, fromRowIndex: number, fromCellIndex: number) {
-  emit('imageSwap', props.rightPage.id, rowIndex, cellIndex, fromPageId, fromRowIndex, fromCellIndex)
+function handleRightUpdateCrop(containerIndex: number, cellIndex: number, focalPoint: FocalPoint, zoom: number) {
+  emit('updateCrop', props.rightPage.id, containerIndex, cellIndex, focalPoint, zoom)
+}
+
+function handleRightImageDrop(containerIndex: number, cellIndex: number, imagePath: string, naturalWidth: number, naturalHeight: number) {
+  emit('imageDrop', props.rightPage.id, containerIndex, cellIndex, imagePath, naturalWidth, naturalHeight)
+}
+
+function handleRightImageRemove(containerIndex: number, cellIndex: number) {
+  emit('imageRemove', props.rightPage.id, containerIndex, cellIndex)
+}
+
+function handleRightImageSwap(containerIndex: number, cellIndex: number, fromPageId: string, fromContainerIndex: number, fromCellIndex: number) {
+  emit('imageSwap', props.rightPage.id, containerIndex, cellIndex, fromPageId, fromContainerIndex, fromCellIndex)
 }
 </script>
 
@@ -142,6 +169,9 @@ function handleRightImageSwap(rowIndex: number, cellIndex: number, fromPageId: s
         @resize-row-start="handleLeftResizeRowStart"
         @resize-row="handleLeftResizeRow"
         @resize-row-end="handleLeftResizeRowEnd"
+        @resize-column-start="handleLeftResizeColumnStart"
+        @resize-column="handleLeftResizeColumn"
+        @resize-column-end="handleLeftResizeColumnEnd"
         @resize-cell-start="handleLeftResizeCellStart"
         @resize-cell="handleLeftResizeCell"
         @resize-cell-end="handleLeftResizeCellEnd"
@@ -164,6 +194,9 @@ function handleRightImageSwap(rowIndex: number, cellIndex: number, fromPageId: s
         @resize-row-start="handleRightResizeRowStart"
         @resize-row="handleRightResizeRow"
         @resize-row-end="handleRightResizeRowEnd"
+        @resize-column-start="handleRightResizeColumnStart"
+        @resize-column="handleRightResizeColumn"
+        @resize-column-end="handleRightResizeColumnEnd"
         @resize-cell-start="handleRightResizeCellStart"
         @resize-cell="handleRightResizeCell"
         @resize-cell-end="handleRightResizeCellEnd"

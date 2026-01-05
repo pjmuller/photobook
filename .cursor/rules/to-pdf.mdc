@@ -1,0 +1,45 @@
+---
+description: pdf generation
+alwaysApply: false
+---
+
+# PDF Generator
+
+## Purpose
+Python CLI script that reads `album.json` and source images, applies identical cropping/layout logic to the Vue app, and outputs print-ready CMYK PDFs.
+
+## Location
+```
+pdf_generator/
+├── generate_pdf.py     # Main script
+├── pyproject.toml      # Dependencies: Pillow, ReportLab
+└── README.md
+```
+
+## Dimension Mapping (UI → Print)
+| UI (px) | Print (mm) | Notes |
+|---------|------------|-------|
+| 730×598 | 336×276 | Printable area (page minus margins) |
+| 10px gutter | ~4.6mm | Scale factor: 0.4603 mm/px |
+| - | 356×296 | Full page size |
+| - | 10mm | Margins all sides |
+
+## Cropping Algorithm
+Direct port of `calculateCrop()` from `useCropCalculation.ts`:
+1. Compute "cover" crop at zoom=1.0 (largest rect with cell AR that fits image)
+2. Apply zoom: `crop_size = base_crop / zoom`
+3. Center on focal point, clamp to image bounds
+
+## Usage
+```bash
+cd pdf_generator
+uv venv && source .venv/bin/activate
+uv pip install Pillow reportlab
+python generate_pdf.py /path/to/folder  # folder must contain album.json + images
+# Output: /path/to/folder/photobook.pdf
+```
+
+## Output Specs
+- **Color space**: CMYK
+- **Resampling**: Lanczos (high quality)
+- **DPI warning**: Below 200 DPI logged per image

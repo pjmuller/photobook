@@ -14,7 +14,8 @@ import {
 
 const props = defineProps<{
   cell: Cell
-  rowHeight: number
+  cellWidth: number   // explicit width (from cell.width for rows, column.width for columns)
+  cellHeight: number  // explicit height (from row.height for rows, cell.height for columns)
   pageId: string
   rowIndex: number
   cellIndex: number
@@ -58,8 +59,8 @@ const imgDimensions = computed(() => {
 })
 
 const cellDimensions = computed(() => ({
-  width: props.cell.width,
-  height: props.rowHeight,
+  width: props.cellWidth,
+  height: props.cellHeight,
 }))
 
 const hasImage = computed(() => !!props.cell.path && !!props.imageInfo)
@@ -102,7 +103,7 @@ function updateDisplayState() {
 
 // Watch for changes and update display
 watch(
-  () => [props.cell, props.rowHeight, props.imageInfo],
+  () => [props.cell, props.cellWidth, props.cellHeight, props.imageInfo],
   () => updateDisplayState(),
   { deep: true, immediate: true }
 )
@@ -316,8 +317,8 @@ const zoomDisplay = computed(() => {
       'drop-target': isDropTarget,
     }"
     :style="{
-      width: `${cell.width}px`,
-      height: `${rowHeight}px`,
+      width: `${cellWidth}px`,
+      height: `${cellHeight}px`,
     }"
     :draggable="hasImage && !isCropMode"
     @dblclick="handleDoubleClick"
