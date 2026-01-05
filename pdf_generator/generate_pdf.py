@@ -28,17 +28,17 @@ UI_GUTTER = 10
 # Print dimensions (in mm)
 PRINT_PAGE_WIDTH = 356
 PRINT_PAGE_HEIGHT = 296
-PRINT_MARGIN = 10  # 1cm margin from outer edges
+PRINT_MARGIN = 2  # 2mm margin for bleed (printer cuts 3mm, so 1mm bleeds past cut line)
 
 # Printable area (mm)
-PRINT_AREA_WIDTH = PRINT_PAGE_WIDTH - (2 * PRINT_MARGIN)   # 336mm
-PRINT_AREA_HEIGHT = PRINT_PAGE_HEIGHT - (2 * PRINT_MARGIN)  # 276mm
+PRINT_AREA_WIDTH = PRINT_PAGE_WIDTH - (2 * PRINT_MARGIN)   # 352mm
+PRINT_AREA_HEIGHT = PRINT_PAGE_HEIGHT - (2 * PRINT_MARGIN)  # 292mm
 
 # Scale factor: mm per UI pixel
-SCALE_FACTOR = PRINT_AREA_WIDTH / UI_PAGE_WIDTH  # ~0.4603 mm/px
+SCALE_FACTOR = PRINT_AREA_WIDTH / UI_PAGE_WIDTH  # ~0.4822 mm/px
 
 # Gutter in mm
-PRINT_GUTTER = UI_GUTTER * SCALE_FACTOR  # ~4.6mm
+PRINT_GUTTER = UI_GUTTER * SCALE_FACTOR  # ~4.8mm
 
 # DPI warning threshold
 MIN_DPI_WARNING = 200

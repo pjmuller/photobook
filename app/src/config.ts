@@ -1,6 +1,5 @@
 // All dimension values are in pixels
 export const CONFIG = {
-  PAGE_OUTER_MARGIN: 20,
   PAGE_WIDTH: 730,
   PAGE_HEIGHT: 598,
   ROW_MIN_HEIGHT: 100,

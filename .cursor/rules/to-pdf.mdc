@@ -19,10 +19,10 @@ pdf_generator/
 ## Dimension Mapping (UI → Print)
 | UI (px) | Print (mm) | Notes |
 |---------|------------|-------|
-| 730×598 | 336×276 | Printable area (page minus margins) |
-| 10px gutter | ~4.6mm | Scale factor: 0.4603 mm/px |
+| 730×598 | 352×292 | Printable area (page minus 2mm margins) |
+| 10px gutter | ~4.8mm | Scale factor: 0.4822 mm/px |
 | - | 356×296 | Full page size |
-| - | 10mm | Margins all sides |
+| - | 2mm | Margins (bleed for 3mm printer cutoff) |
 
 ## Cropping Algorithm
 Direct port of `calculateCrop()` from `useCropCalculation.ts`:

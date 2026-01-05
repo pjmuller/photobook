@@ -4,16 +4,16 @@ overview: Remove the unused PAGE_OUTER_MARGIN from Vue config and reduce PDF pri
 todos:
   - id: vue-config-cleanup
     content: Remove unused PAGE_OUTER_MARGIN from config.ts
-    status: pending
+    status: completed
   - id: pdf-margin-update
     content: Update PRINT_MARGIN to 2mm and recalculate derived constants
-    status: pending
+    status: completed
   - id: mdc-to-pdf
     content: Update to-pdf.mdc with new dimension mapping
-    status: pending
+    status: completed
   - id: mdc-project-context
     content: Update project-context.mdc if needed
-    status: pending
+    status: completed
 ---
 
 # Remove Outer Margins from Vue and PDF Generator
