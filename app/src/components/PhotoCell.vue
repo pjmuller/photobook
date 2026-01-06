@@ -283,15 +283,16 @@ function handleDrop(e: DragEvent) {
 }
 
 function handleDragStart(e: DragEvent) {
-  if (!hasImage.value || props.isCropMode || !props.imageInfo) {
+  const { imageInfo } = props
+  if (!hasImage.value || props.isCropMode || !imageInfo?.naturalWidth || !imageInfo?.naturalHeight) {
     e.preventDefault()
     return
   }
   
   // Create custom drag image (clean thumbnail)
   const dragPreview = document.createElement('img')
-  dragPreview.src = props.imageInfo.objectUrl!
-  const aspectRatio = props.imageInfo.naturalWidth / props.imageInfo.naturalHeight
+  dragPreview.src = imageInfo.objectUrl!
+  const aspectRatio = imageInfo.naturalWidth / imageInfo.naturalHeight
   const previewHeight = 80
   dragPreview.style.cssText = `
     width: ${previewHeight * aspectRatio}px;
